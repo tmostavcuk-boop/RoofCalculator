@@ -3,7 +3,7 @@ name: Android CI Build (Збірка Калькулятора)
 on:
   push:
     branches: [ "main" ]
-  workflow_dispatch: # Дозволяє запускати збірку вручну
+  workflow_dispatch: 
 
 jobs:
   build:
@@ -12,6 +12,9 @@ jobs:
     steps:
     - uses: actions/checkout@v4
     
+    - name: Надання дозволу файлу gradlew
+      run: chmod +x gradlew
+
     - name: Налаштування Java (JDK 17)
       uses: actions/setup-java@v4
       with:
@@ -20,6 +23,7 @@ jobs:
         cache: 'gradle'
 
     - name: Збірка APK-файлу (Debug)
+      # Оскільки ми додали gradlew, ця команда тепер буде працювати
       run: ./gradlew assembleDebug
 
     - name: Збереження APK як артефакту
