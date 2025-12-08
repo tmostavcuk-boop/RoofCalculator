@@ -19,7 +19,6 @@ jobs:
         distribution: 'temurin'
         cache: 'gradle'
 
-    # Оскільки ми не завантажували gradlew, ми дозволимо CI завантажити його і зібрати
     - name: Збірка APK-файлу (Debug)
       run: ./gradlew assembleDebug
 
