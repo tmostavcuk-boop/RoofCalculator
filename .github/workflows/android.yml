@@ -1,0 +1,30 @@
+name: Android CI Build (Збірка Калькулятора)
+
+on:
+  push:
+    branches: [ "main" ]
+  workflow_dispatch: # Дозволяє запускати збірку вручну
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Налаштування Java (JDK 17)
+      uses: actions/setup-java@v4
+      with:
+        java-version: '17'
+        distribution: 'temurin'
+        cache: 'gradle'
+
+    # Оскільки ми не завантажували gradlew, ми дозволимо CI завантажити його і зібрати
+    - name: Збірка APK-файлу (Debug)
+      run: ./gradlew assembleDebug
+
+    - name: Збереження APK як артефакту
+      uses: actions/upload-artifact@v4
+      with:
+        name: app-debug-apk
+        path: app/build/outputs/apk/debug/app-debug.apk
