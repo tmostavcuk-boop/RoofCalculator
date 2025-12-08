@@ -1,0 +1,8 @@
+<resources>
+    <string name="app_name">KalkulyatorPokrivli</string>
+    <string-array name="roof_shapes">
+        <item>Прямокутник</item>
+        <item>Трикутник</item>
+        <item>Трапеція</item>
+    </string-array>
+</resources>
