@@ -23,19 +23,20 @@ jobs:
         java-version: '17'
         distribution: 'temurin'
         cache: 'gradle'
-        
-    # ⭐️ КРОК №3: КОНВЕРТАЦІЯ ФОРМАТУ ФАЙЛУ (УСУНЕННЯ "Permission denied")
-    # Конвертує файл у Linux-формат, щоб уникнути помилки "Permission denied"
-    - name: Конвертація формату Gradlew (dos2unix)
-      run: |
-        sudo apt-get install dos2unix
-        dos2unix gradlew
-      
-    # КРОК №4: Примусове Надання Дозволу (Для подвійної надійності)
-    - name: Примусове Надання Дозволу
-      run: chmod +x gradlew
 
-    # КРОК №5: Збірка
+    # ⭐️ КРОК №3: КОНВЕРТАЦІЯ ТА ДОЗВІЛ (УСУНЕННЯ "Permission denied")
+    # Виправляємо проблему формату кінця рядка (`\r\n`)
+    - name: Конвертація формату та примусове надання дозволу
+      run: |
+        # Встановлюємо утиліту для конвертації форматів
+        sudo apt-get update
+        sudo apt-get install dos2unix -y
+        # Конвертуємо файл у Linux-формат (`\n`)
+        dos2unix gradlew
+        # Примусово надаємо право на виконання
+        chmod +x gradlew
+
+    # КРОК №4: Збірка
     - name: Збірка APK-файлу (Debug)
       run: ./gradlew assembleDebug
 
