@@ -13,23 +13,29 @@ jobs:
     - uses: actions/checkout@v4
     
     # КРОК №1: Налаштування середовища Gradle
-    # Цей Action автоматично завантажить файли .jar
     - name: Налаштування середовища Gradle
       uses: gradle/actions/setup-gradle@v3 
 
+    # КРОК №2: Налаштування Java
     - name: Налаштування Java (JDK 17)
       uses: actions/setup-java@v4
       with:
         java-version: '17'
         distribution: 'temurin'
         cache: 'gradle'
-
-    # ⭐️ КРОК №3: ГАРАНТОВАНЕ НАДАННЯ ДОЗВОЛУ (УСУНЕННЯ "PERMISSION DENIED")
-    # Цей крок примусово надає дозвіл на виконання ВСІМ скриптам.
-    - name: Гарантоване надання дозволу (Через проблему End-of-Line)
-      run: chmod +x gradlew
+        
+    # ⭐️ КРОК №3: КОНВЕРТАЦІЯ ФОРМАТУ ФАЙЛУ (УСУНЕННЯ "Permission denied")
+    # Конвертує файл у Linux-формат, щоб уникнути помилки "Permission denied"
+    - name: Конвертація формату Gradlew (dos2unix)
+      run: |
+        sudo apt-get install dos2unix
+        dos2unix gradlew
       
-    # КРОК №4: Збірка
+    # КРОК №4: Примусове Надання Дозволу (Для подвійної надійності)
+    - name: Примусове Надання Дозволу
+      run: chmod +x gradlew
+
+    # КРОК №5: Збірка
     - name: Збірка APK-файлу (Debug)
       run: ./gradlew assembleDebug
 
