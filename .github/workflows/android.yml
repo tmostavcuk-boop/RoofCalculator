@@ -12,12 +12,13 @@ jobs:
     steps:
     - uses: actions/checkout@v4
     
-    # ⭐️ НОВИЙ КРОК: Офіційний інструмент для налаштування Gradle
-    # Цей Action автоматично завантажить і налаштує gradlew, gradlew.bat, 
-    # а також надасть дозволи на виконання, усуваючи всі попередні помилки.
+    # ⭐️ КРОК №1: Офіційний інструмент для налаштування Gradle
+    # Цей Action (setup-gradle) автоматично налаштує Gradlew, 
+    # завантажить JAR-файл та НАДАСТЬ ДОЗВОЛИ НА ВИКОНАННЯ (Permission denied).
     - name: Налаштування середовища Gradle
       uses: gradle/actions/setup-gradle@v3 
 
+    # КРОК №2: Налаштування Java
     - name: Налаштування Java (JDK 17)
       uses: actions/setup-java@v4
       with:
@@ -25,8 +26,9 @@ jobs:
         distribution: 'temurin'
         cache: 'gradle'
 
+    # КРОК №3: Збірка
     - name: Збірка APK-файлу (Debug)
-      # Використовуємо ./gradlew, який щойно був автоматично налаштований
+      # Оскільки середовище налаштоване, ця команда має спрацювати без проблем
       run: ./gradlew assembleDebug
 
     - name: Збереження APK як артефакту
