@@ -12,9 +12,10 @@ jobs:
     steps:
     - uses: actions/checkout@v4
     
-    # ⭐️ КРОК №1: Офіційний інструмент для налаштування Gradle
-    # Цей Action (setup-gradle) автоматично налаштує Gradlew, 
-    # завантажить JAR-файл та НАДАСТЬ ДОЗВОЛИ НА ВИКОНАННЯ (Permission denied).
+    # КРОК №1: Налаштування середовища Gradle
+    # Цей Action (setup-gradle) автоматично вирішує проблеми:
+    # 1. Завантажує відсутній JAR-файл (усуває ClassNotFoundException).
+    # 2. Надає права виконання (усуває Permission denied / exit code 126).
     - name: Налаштування середовища Gradle
       uses: gradle/actions/setup-gradle@v3 
 
@@ -28,7 +29,7 @@ jobs:
 
     # КРОК №3: Збірка
     - name: Збірка APK-файлу (Debug)
-      # Оскільки середовище налаштоване, ця команда має спрацювати без проблем
+      # Оскільки середовище налаштоване, ця команда має спрацювати
       run: ./gradlew assembleDebug
 
     - name: Збереження APK як артефакту
