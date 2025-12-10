@@ -1,4 +1,4 @@
-name: Android CI Build (ФІНАЛЬНА ЗБІРКА)
+name: Android CI Build (ФІНАЛЬНА ЗБІРКА - Відновлення Gradlew)
 
 on:
   push:
@@ -12,7 +12,8 @@ jobs:
     steps:
     - uses: actions/checkout@v4
     
-    # КРОК №1: Налаштування середовища Gradle (вирішує ClassNotFoundException)
+    # КРОК №1: Налаштування середовища Gradle
+    # Цей Action забезпечує наявність усіх JAR-файлів.
     - name: Налаштування середовища Gradle
       uses: gradle/actions/setup-gradle@v3 
 
@@ -24,19 +25,20 @@ jobs:
         distribution: 'temurin'
         cache: 'gradle'
 
-    # ⭐️ КРОК №3: КОНВЕРТАЦІЯ ТА ДОЗВІЛ (Вирішує die: not found та Permission denied)
-    - name: Конвертація формату та примусове надання дозволу
-      run: |
-        # Встановлюємо утиліту для конвертації форматів
-        sudo apt-get update
-        sudo apt-get install dos2unix -y
-        # Конвертуємо файл, виправляючи синтаксичну помилку
-        dos2unix gradlew
-        # Примусово надаємо право на виконання (вирішує Permission denied)
-        chmod +x gradlew
+    # ⭐️ КРОК №3: ГЕНЕРАЦІЯ НОВИХ СКРИПТІВ GRADLEW
+    # Ця команда змусить Gradle СТВОРИТИ НОВІ gradlew та gradlew.bat
+    # з правильним форматом Linux-сервера. Це вирішить die: not found.
+    - name: Генерація нових скриптів Gradlew
+      run: ./gradlew wrapper --gradle-version 8.2 --distribution-type all
 
-    # КРОК №4: Збірка
+    # КРОК №4: Примусове Надання Дозволу
+    # Це єдиний необхідний крок для дозволу після генерації.
+    - name: Примусове Надання Дозволу
+      run: chmod +x gradlew
+
+    # КРОК №5: Збірка
     - name: Збірка APK-файлу (Debug)
+      # Після генерації та дозволу, команда має спрацювати
       run: ./gradlew assembleDebug
 
     - name: Збереження APK як артефакту
