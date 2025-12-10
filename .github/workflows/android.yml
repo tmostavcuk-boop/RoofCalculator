@@ -13,9 +13,6 @@ jobs:
     - uses: actions/checkout@v4
     
     # КРОК №1: Налаштування середовища Gradle
-    # Цей Action (setup-gradle) автоматично вирішує проблеми:
-    # 1. Завантажує відсутній JAR-файл (усуває ClassNotFoundException).
-    # 2. Надає права виконання (усуває Permission denied / exit code 126).
     - name: Налаштування середовища Gradle
       uses: gradle/actions/setup-gradle@v3 
 
@@ -27,9 +24,14 @@ jobs:
         distribution: 'temurin'
         cache: 'gradle'
 
-    # КРОК №3: Збірка
+    # ⭐️ КРОК №3: Надання дозволу файлу gradlew (ПРИМУСОВО)
+    # Це необхідно для усунення помилки "Permission denied" (exit code 126).
+    - name: Надання дозволу файлу gradlew (ПРИМУСОВО)
+      run: chmod +x gradlew
+
+    # КРОК №4: Збірка
     - name: Збірка APK-файлу (Debug)
-      # Оскільки середовище налаштоване, ця команда має спрацювати
+      # Після надання дозволу, ця команда має спрацювати
       run: ./gradlew assembleDebug
 
     - name: Збереження APK як артефакту
