@@ -21,9 +21,11 @@ jobs:
         java-version: '17'
         distribution: 'temurin'
         cache: 'gradle'
-
+        
+    - name: 🔥 ЗАВАНТАЖЕННЯ ВІДСУТНІХ ФАЙЛІВ GRADLE WRAPPER
+      run: ./gradlew wrapper --gradle-version 8.2 --distribution-type bin
+      
     - name: Збірка APK-файлу (Debug)
-      # Оскільки ми додали gradlew, ця команда тепер буде працювати
       run: ./gradlew assembleDebug
 
     - name: Збереження APK як артефакту
