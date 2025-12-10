@@ -24,6 +24,7 @@ jobs:
         
     - name: 🔥 ЗАВАНТАЖЕННЯ ВІДСУТНІХ ФАЙЛІВ GRADLE WRAPPER
       run: ./gradlew wrapper --gradle-version 8.2 --distribution-type bin
+      # Ця команда змусить Gradle завантажити відсутній JAR-файл, використовуючи властивості, які ви надали в gradle-wrapper.properties
       
     - name: Збірка APK-файлу (Debug)
       run: ./gradlew assembleDebug
