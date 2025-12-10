@@ -12,7 +12,7 @@ jobs:
     steps:
     - uses: actions/checkout@v4
     
-    # КРОК №1: Налаштування середовища Gradle (вирішує ClassNotFoundException)
+    # КРОК №1: Налаштування середовища Gradle
     - name: Налаштування середовища Gradle
       uses: gradle/actions/setup-gradle@v3 
 
@@ -24,15 +24,15 @@ jobs:
         distribution: 'temurin'
         cache: 'gradle'
 
-    # ⭐️ КРОК №3: КОНВЕРТАЦІЯ ТА ДОЗВІЛ (Вирішує die: not found та Permission denied)
-    - name: Конвертація формату та примусове надання дозволу
+    # ⭐️ КРОК №3: ФІКСАЦІЯ ФОРМАТУ (Вирішує проблему кінця рядка)
+    - name: Фіксація формату та надання дозволу (Усунення Permission denied)
       run: |
-        # Встановлюємо утиліту для конвертації форматів
+        # Оновлюємо та встановлюємо утиліту dos2unix
         sudo apt-get update
         sudo apt-get install dos2unix -y
-        # Конвертуємо файл, виправляючи синтаксичну помилку
+        # Конвертуємо файл: CRLF -> LF
         dos2unix gradlew
-        # Примусово надаємо право на виконання (вирішує Permission denied)
+        # Примусово надаємо право на виконання
         chmod +x gradlew
 
     # КРОК №4: Збірка
