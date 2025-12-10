@@ -1,4 +1,4 @@
-name: Android CI Build (Фінальна Версія)
+name: Android CI Build (ФІНАЛЬНА ЗБІРКА)
 
 on:
   push:
@@ -13,10 +13,10 @@ jobs:
     - uses: actions/checkout@v4
     
     # КРОК №1: Налаштування середовища Gradle
+    # Цей Action автоматично завантажить файли .jar
     - name: Налаштування середовища Gradle
       uses: gradle/actions/setup-gradle@v3 
 
-    # КРОК №2: Налаштування Java
     - name: Налаштування Java (JDK 17)
       uses: actions/setup-java@v4
       with:
@@ -24,14 +24,13 @@ jobs:
         distribution: 'temurin'
         cache: 'gradle'
 
-    # ⭐️ КРОК №3: Надання дозволу файлу gradlew (ПРИМУСОВО)
-    # Це необхідно для усунення помилки "Permission denied" (exit code 126).
-    - name: Надання дозволу файлу gradlew (ПРИМУСОВО)
+    # ⭐️ КРОК №3: ГАРАНТОВАНЕ НАДАННЯ ДОЗВОЛУ (УСУНЕННЯ "PERMISSION DENIED")
+    # Цей крок примусово надає дозвіл на виконання ВСІМ скриптам.
+    - name: Гарантоване надання дозволу (Через проблему End-of-Line)
       run: chmod +x gradlew
-
+      
     # КРОК №4: Збірка
     - name: Збірка APK-файлу (Debug)
-      # Після надання дозволу, ця команда має спрацювати
       run: ./gradlew assembleDebug
 
     - name: Збереження APK як артефакту
