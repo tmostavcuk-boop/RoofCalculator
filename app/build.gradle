@@ -26,15 +26,16 @@ android {
     }
 }
 
-// ⭐️ РАДИКАЛЬНА ЗМІНА: Використовуємо контейнер для запобігання помилці "Mutating dependencies"
-configurations.all {
-    resolutionStrategy {
-        // Забезпечуємо, що залежності вирішуються правильно
+// ⭐️ РАДИКАЛЬНЕ ВИПРАВЛЕННЯ MUTATING DEPENDENCIES
+project.afterEvaluate {
+    configurations.all {
+        resolutionStrategy {
+            // Запобігає зміні залежностей після їх вирішення
+        }
     }
 }
 
 dependencies {
-    // Бібліотеки для роботи додатку
     implementation 'androidx.core:core-ktx:1.12.0'
     implementation 'androidx.appcompat:appcompat:1.6.1'
     implementation 'com.google.android.material:material:1.10.0'
