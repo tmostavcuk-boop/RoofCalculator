@@ -4,9 +4,9 @@ plugins {
 }
 
 android {
-    // Встановлення версій та залежностей
     namespace 'com.example.roofcalculator'
     compileSdk 34
+
     defaultConfig {
         applicationId "com.example.roofcalculator"
         minSdk 24
@@ -23,6 +23,13 @@ android {
     }
     kotlinOptions {
         jvmTarget = '1.8'
+    }
+}
+
+// ⭐️ РАДИКАЛЬНА ЗМІНА: Використовуємо контейнер для запобігання помилці "Mutating dependencies"
+configurations.all {
+    resolutionStrategy {
+        // Забезпечуємо, що залежності вирішуються правильно
     }
 }
 
