@@ -1,4 +1,4 @@
-name: Android CI Build (ФІНАЛЬНА ЗБІРКА - Відновлення Gradlew)
+name: Android CI Build (ФІНАЛЬНИЙ ОБХІД ПОМИЛОК)
 
 on:
   push:
@@ -12,12 +12,10 @@ jobs:
     steps:
     - uses: actions/checkout@v4
     
-    # КРОК №1: Налаштування середовища Gradle
-    # Цей Action забезпечує наявність усіх JAR-файлів.
     - name: Налаштування середовища Gradle
+      # Цей action автоматично налаштовує середовище
       uses: gradle/actions/setup-gradle@v3 
 
-    # КРОК №2: Налаштування Java
     - name: Налаштування Java (JDK 17)
       uses: actions/setup-java@v4
       with:
@@ -25,21 +23,16 @@ jobs:
         distribution: 'temurin'
         cache: 'gradle'
 
-    # ⭐️ КРОК №3: ГЕНЕРАЦІЯ НОВИХ СКРИПТІВ GRADLEW
-    # Ця команда змусить Gradle СТВОРИТИ НОВІ gradlew та gradlew.bat
-    # з правильним форматом Linux-сервера. Це вирішить die: not found.
     - name: Генерація нових скриптів Gradlew
-      run: ./gradlew wrapper --gradle-version 8.2 --distribution-type all
+      # Викликаємо "gradle" напряму, щоб уникнути помилки `./gradlew: Permission denied`
+      run: gradle wrapper --gradle-version 8.2 --distribution-type all
 
-    # КРОК №4: Примусове Надання Дозволу
-    # Це єдиний необхідний крок для дозволу після генерації.
     - name: Примусове Надання Дозволу
       run: chmod +x gradlew
 
-    # КРОК №5: Збірка
-    - name: Збірка APK-файлу (Debug)
-      # Після генерації та дозволу, команда має спрацювати
-      run: ./gradlew assembleDebug
+    - name: Збірка APK-файлу (Обхід помилки Permission denied)
+      # Викликаємо "gradle" напряму для збірки
+      run: gradle assembleDebug
 
     - name: Збереження APK як артефакту
       uses: actions/upload-artifact@v4
