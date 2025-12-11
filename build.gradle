@@ -11,9 +11,5 @@ buildscript {
     }
 }
 
-allprojects {
-    repositories {
-        google()
-        mavenCentral()
-    }
-}
+// ... (частина buildscript залишається)
+// Блок allprojects повністю видалено!
