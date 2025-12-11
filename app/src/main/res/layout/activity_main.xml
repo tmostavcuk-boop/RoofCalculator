@@ -1,91 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
-<ScrollView
+<LinearLayout
     xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:padding="16dp">
-
-    <LinearLayout
-        android:layout_width="match_parent"
+    android:orientation="vertical">
+    
+    <TextView
+        android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:orientation="vertical">
+        android:text="Тест збірки УСПІШНИЙ"
+        android:padding="16dp"/>
 
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="Калькулятор Покрівлі"
-            android:textSize="24sp"
-            android:textStyle="bold"
-            android:layout_marginBottom="16dp"/>
-
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="Виберіть форму ската:"
-            android:layout_marginTop="8dp"/>
-
-        <Spinner
-            android:id="@+id/spinner_shape"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:entries="@array/roof_shapes"
-            android:layout_marginBottom="16dp"/>
-
-        <EditText
-            android:id="@+id/et_base_a"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:hint="Основа / Нижня ширина (м)"
-            android:inputType="numberDecimal"
-            android:layout_marginBottom="8dp"/>
-
-        <EditText
-            android:id="@+id/et_base_b"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:hint="Верхня ширина (м) - для трапеції/прямокутника"
-            android:inputType="numberDecimal"
-            android:layout_marginBottom="8dp"/>
-
-        <EditText
-            android:id="@+id/et_height"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:hint="Висота ската (м)"
-            android:inputType="numberDecimal"
-            android:layout_marginBottom="16dp"/>
-
-        <EditText
-            android:id="@+id/et_material_width"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:hint="Корисна ширина матеріалу (м, напр. 1.1)"
-            android:inputType="numberDecimal"
-            android:layout_marginBottom="24dp"/>
-
-        <Button
-            android:id="@+id/btn_calculate"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="Розрахувати"
-            android:layout_marginBottom="12dp"/>
-
-        <Button
-            android:id="@+id/btn_export_pdf"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="Зберегти PDF"
-            android:enabled="false"
-            android:layout_marginBottom="16dp"/>
-
-        <TextView
-            android:id="@+id/tv_result"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="Результат:"
-            android:textSize="18sp"
-            android:background="#F0F0F0"
-            android:padding="12dp"/>
-
-    </LinearLayout>
-</ScrollView>
+</LinearLayout>
