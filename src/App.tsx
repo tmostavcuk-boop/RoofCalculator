@@ -2113,19 +2113,79 @@ export default function App() {
                              <button onClick={deleteElement} className="h-10 px-3 bg-red-100 text-red-700 rounded-lg font-bold text-xs mt-4 flex items-center justify-center">
                                 <Trash2 size={16}/>
                              </button>
-                             <button 
-                              onClick={() => setSelectedVertex(null)} 
-                              className="h-10 px-4 bg-gray-100 text-gray-700 rounded-lg font-bold text-sm"
-                            >
-                              Скасувати
-                            </button>
-                        </div>
-                    </div>
-                )}
-            </div>
-        </div>
+                             <button onClick={() => setSelectedVertex(null)} className="h-10 px-4 bg-gray-100 text-gray-700 rounded-lg font-bold text-xs mt-4">
+                                ОК
+                             </button>
+                           </>
+                       )
+                   })()}
+                </div>
+            ) : (
+               // DEFAULT MODE
+               <div className="flex w-full gap-2 overflow-x-auto no-scrollbar items-center px-1">
+                  <button onClick={() => setShowTemplates(true)} className="px-3 py-2 bg-gray-100 rounded text-xs font-bold whitespace-nowrap border border-gray-200 flex items-center gap-1">
+                      <LayoutTemplate size={16} className="text-gray-600"/>
+                      Шаблони
+                  </button>
+                  <div className="h-6 w-px bg-gray-300 mx-1"></div>
+                  
+                  <button onClick={() => setIsAddingGuide(true)} className={`flex-1 px-3 py-2 border rounded text-xs font-bold flex justify-center gap-1 whitespace-nowrap transition ${isAddingGuide ? 'bg-indigo-600 text-white border-indigo-700 shadow-inner' : 'bg-indigo-50 text-indigo-700 border-indigo-100 hover:bg-indigo-100'}`}>
+                      <Split size={16}/> {isAddingGuide ? 'Вкажіть лінію' : 'Розділювач'}
+                  </button>
+
+                  <button onClick={addVertex} className="flex-1 px-3 py-2 bg-blue-50 text-blue-700 border border-blue-100 rounded text-xs font-bold flex justify-center gap-1 whitespace-nowrap"><PlusCircle size={16}/> {selectedHoleIndex !== null ? 'Точку' : 'Додати'}</button>
+                  <button onClick={addHole} className="flex-1 px-3 py-2 bg-orange-50 text-orange-700 border border-orange-100 rounded text-xs font-bold flex justify-center gap-1 whitespace-nowrap"><MinusSquare size={16}/> Виріз</button>
+                  
+                  <button onClick={deleteElement} className="flex-1 px-3 py-2 bg-red-50 text-red-700 border border-red-100 rounded text-xs font-bold flex justify-center gap-1 whitespace-nowrap"><Trash2 size={16}/> {selectedHoleIndex !== null ? 'Виріз' : 'Видалити'}</button>
+               </div>
+            )
+         ) : (
+             selectedSheet ? (
+               // SHEET EDIT MODE
+               <div className="flex w-full gap-2 items-center px-2">
+                  <div className="flex-1">
+                     <label className="text-[10px] text-gray-500 font-bold uppercase ml-1 block">
+                        {material.type === 'picket' ? 'Довжина (см)' : 'Довжина (мм)'}
+                     </label>
+                     <input 
+                       type="number" 
+                       className="w-full border bg-gray-50 rounded p-2 text-sm font-bold outline-none" 
+                       value={material.type === 'picket' 
+                           ? (selectedSheet.length / 10).toFixed(1)
+                           : (material.type === 'siding' ? selectedSheet.width : selectedSheet.length)
+                       }
+                       onChange={(e) => {
+                           const val = Number(e.target.value);
+                           const targetId = selectedSheet.id;
+                           setSheets(prev => prev.map(s => {
+                               if (s.id === targetId) {
+                                   if (material.type === 'picket') {
+                                       // Picket: input in CM, stored in MM
+                                       const newLength = val * 10;
+                                       const newY = s.y + s.length - newLength;
+                                       return { ...s, length: newLength, y: newY, label: newLength, fullLength: newLength };
+                                   } else if (material.type === 'siding') {
+                                        return { ...s, width: val, label: val, fullLength: val };
+                                   } else {
+                                        const newY = s.y + s.length - val;
+                                        return { ...s, length: val, y: newY, label: val, fullLength: val };
+                                   }
+                               }
+                               return s;
+                           }));
+                       }}
+                     />
+                  </div>
+                  <button onClick={() => { setSheets(p => p.filter(s => s.id !== selectedSheet.id)); setSelectedSheetId(null); }} className="h-10 px-4 bg-red-100 text-red-700 rounded-lg font-bold text-xs mt-4 border border-red-200">Видалити</button>
+               </div>
+             ) : (
+               <div className="w-full text-center text-xs text-gray-400 py-1 font-medium flex flex-col items-center">
+                 <MousePointer2 size={16} className="mb-1 opacity-50"/>
+                 Натисніть на лист для редагування
+               </div>
+             )
+         )}
+      </div>
     </div>
   );
 }
-
-export default App;
