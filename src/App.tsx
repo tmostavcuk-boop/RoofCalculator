@@ -5,7 +5,7 @@ import {
   Settings, Calculator,
   MousePointer2, ChevronRight, Focus, Grid3X3, Columns, AlignJustify, MoreHorizontal,
   Ruler, Info, Sparkles, X, Send, MessageSquare, Loader2,
-  SquareDashed, Scissors, Layers, ChevronDown, ChevronUp, FileText,
+  Square, Scissors, Layers, ChevronDown, ChevronUp, FileText,
   MinusSquare, Move, TrendingUp, TrendingDown, Minus, ArrowUpDown, Crosshair,
   Plus, Download, ArrowUp, ArrowDown, ArrowLeft, LayoutTemplate,
   Copy, Edit2, Check, Split
@@ -1550,7 +1550,7 @@ export default function App() {
                         <div className="space-y-3">
                             <div className="flex items-center justify-between">
                                 <div className="flex items-center gap-2 text-gray-700">
-                                    <SquareDashed size={16}/>
+                                    <Square size={16}/>
                                     <span className="text-xs">Площа</span>
                                 </div>
                                 <span className="text-xs font-bold">{polygonArea.toFixed(2)} м²</span>
