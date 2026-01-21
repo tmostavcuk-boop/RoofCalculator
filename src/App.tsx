@@ -2113,4 +2113,19 @@ export default function App() {
                              <button onClick={deleteElement} className="h-10 px-3 bg-red-100 text-red-700 rounded-lg font-bold text-xs mt-4 flex items-center justify-center">
                                 <Trash2 size={16}/>
                              </button>
-                             <button onClick={() => setSelectedVertex(null)} className="h-10 px-4 bg-gray-100 text-gray-700 rounded-lg font-bold text-
+                             <button 
+                              onClick={() => setSelectedVertex(null)} 
+                              className="h-10 px-4 bg-gray-100 text-gray-700 rounded-lg font-bold text-sm"
+                            >
+                              Скасувати
+                            </button>
+                        </div>
+                    </div>
+                )}
+            </div>
+        </div>
+    </div>
+  );
+}
+
+export default App;
