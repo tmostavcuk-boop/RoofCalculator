@@ -2027,4 +2027,90 @@ export default function App() {
                // EDGE EDIT MODE
                <div className="flex w-full gap-2 items-center px-2">
                   <div className="flex-1">
-                     <label className="text-[10px] text-blue-6
+                     <label className="text-[10px] text-blue-600 font-bold uppercase ml-1 block flex items-center gap-1">
+                        <Ruler size={10}/> Редагування сторони
+                     </label>
+                     <input 
+                       type="number" 
+                       autoFocus
+                       className="w-full border-2 border-blue-500 bg-blue-50 rounded p-2 text-sm font-bold outline-none" 
+                       value={manualLength}
+                       onChange={(e) => {
+                           const val = e.target.value;
+                           setManualLength(val);
+                           const num = Number(val);
+                           if (!isNaN(num) && num > 0) {
+                               updateEdgeLength(num);
+                           }
+                       }}
+                     />
+                  </div>
+                  <button 
+                    onClick={() => setSelectedEdge(null)} 
+                    className="h-10 px-4 bg-gray-100 text-gray-700 rounded-lg font-bold text-xs mt-4"
+                  >
+                    ОК
+                  </button>
+               </div>
+            ) : isEditingHeight ? (
+                // HEIGHT EDIT MODE
+               <div className="flex w-full gap-2 items-center px-2">
+                  <div className="flex-1">
+                     <label className="text-[10px] text-purple-600 font-bold uppercase ml-1 block flex items-center gap-1">
+                        <ArrowUpDown size={10}/> Висота скату
+                     </label>
+                     <input 
+                       type="number" 
+                       autoFocus
+                       className="w-full border-2 border-purple-500 bg-purple-50 rounded p-2 text-sm font-bold outline-none" 
+                       value={manualLength}
+                       onChange={(e) => {
+                           const val = e.target.value;
+                           setManualLength(val);
+                           const num = Number(val);
+                           if (!isNaN(num) && num > 0) {
+                               updateHeight(num);
+                           }
+                       }}
+                     />
+                  </div>
+                  <button 
+                    onClick={() => setIsEditingHeight(false)} 
+                    className="h-10 px-4 bg-gray-100 text-gray-700 rounded-lg font-bold text-xs mt-4"
+                  >
+                    ОК
+                  </button>
+               </div>
+            ) : selectedVertex !== null ? (
+                // VERTEX EDIT MODE
+                <div className="flex w-full gap-2 items-center px-2">
+                   {(() => {
+                       const { polyIndex, vertIndex } = selectedVertex;
+                       const poly = polyIndex === -1 ? vertices : holes[polyIndex];
+                       const p = poly[vertIndex];
+                       return (
+                           <>
+                             <div className="flex flex-1 gap-2">
+                                <div className="flex-1">
+                                    <label className="text-[10px] text-green-600 font-bold uppercase ml-1 block">X</label>
+                                    <input 
+                                        type="number" 
+                                        value={Math.round(p.x)} 
+                                        onChange={(e) => updateVertexCoordinate('x', +e.target.value)}
+                                        className="w-full border-2 border-green-500 bg-green-50 rounded p-2 text-sm font-bold outline-none"
+                                    />
+                                </div>
+                                <div className="flex-1">
+                                    <label className="text-[10px] text-green-600 font-bold uppercase ml-1 block">Y</label>
+                                    <input 
+                                        type="number" 
+                                        value={Math.round(p.y)} 
+                                        onChange={(e) => updateVertexCoordinate('y', +e.target.value)}
+                                        className="w-full border-2 border-green-500 bg-green-50 rounded p-2 text-sm font-bold outline-none"
+                                    />
+                                </div>
+                             </div>
+                             <button onClick={deleteElement} className="h-10 px-3 bg-red-100 text-red-700 rounded-lg font-bold text-xs mt-4 flex items-center justify-center">
+                                <Trash2 size={16}/>
+                             </button>
+                             <button onClick={() => setSelectedVertex(null)} className="h-10 px-4 bg-gray-100 text-gray-700 rounded-lg font-bold text-
