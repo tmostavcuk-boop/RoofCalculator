@@ -1667,7 +1667,11 @@ export default function App() {
                </button>
             </div>
 
-            <div ref={canvasRef} style={{ transformOrigin: '0 0', willChange: 'transform' }}>
+            <div ref={canvasRef} style={{ 
+    transformOrigin: '0 0', 
+    backfaceVisibility: 'hidden',
+    WebkitBackfaceVisibility: 'hidden'
+}}>
               <svg style={{ overflow: 'visible' }}>
                   <defs>
                       <GridBackground />
@@ -1675,11 +1679,11 @@ export default function App() {
                           <path d={slopePath} clipRule="evenodd" />
                       </clipPath>
                   </defs>
-                  <rect x="-200000" y="-200000" width="400000" height="400000" fill="url(#grid)" />
+                  <rect x="-10000" y="-10000" width="20000" height="20000" fill="url(#grid)" />
                   
                   {/* --- AXES (Visual Guides) --- */}
-                  <line x1="-200000" y1="0" x2="200000" y2="0" stroke="#EF4444" strokeWidth="3" strokeOpacity="0.5" /> {/* X-Axis (Red) */}
-                  <line x1="0" y1="-200000" x2="0" y2="200000" stroke="#10B981" strokeWidth="3" strokeOpacity="0.5" /> {/* Y-Axis (Green) */}
+                  <line x1="-10000" y1="0" x2="10000" y2="0" stroke="#EF4444" strokeWidth="3" strokeOpacity="0.5" />
+                  <line x1="0" y1="-10000" x2="0" y2="10000" stroke="#10B981" strokeWidth="3" strokeOpacity="0.5" />
 
                   {/* --- 1. Background Fill (Bottom Layer) --- */}
                   <path 
