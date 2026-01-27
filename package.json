@@ -16,7 +16,7 @@
     "@capacitor/android": "^5.7.0",
     "jspdf": "^2.5.1",
     "@capacitor/filesystem": "^5.0.0",
-    "@capacitor/file-opener": "^5.0.0"
+    "@capacitor/file-opener": "^0.0.1"
   },
   "devDependencies": {
     "@types/react": "^18.2.66",
