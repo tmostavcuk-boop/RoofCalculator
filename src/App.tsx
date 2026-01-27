@@ -13,7 +13,7 @@ import {
 
 // Додаємо інструменти для Android
 import { Filesystem, Directory } from '@capacitor/filesystem';
-import { FileOpener } from '@capacitor/file-opener';
+import { FileOpener } from '@cap-browser/file-opener';
 import { jsPDF } from 'jspdf';
 
 // --- Types ---
