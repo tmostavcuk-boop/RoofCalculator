@@ -16,7 +16,8 @@
     "@capacitor/android": "^5.7.0",
     "jspdf": "^2.5.1",
     "@capacitor/filesystem": "^5.7.0",
-    "@cap-browser/file-opener": "^0.0.1"
+    "capacitor-pwa-elements": "^3.3.0",
+    "@awesome-cordova-plugins/file-opener": "^6.3.0"
   },
   "devDependencies": {
     "@types/react": "^18.2.66",
