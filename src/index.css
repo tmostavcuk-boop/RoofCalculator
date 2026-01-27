@@ -2,62 +2,23 @@
 @tailwind components;
 @tailwind utilities;
 
-/* КРИТИЧНО ДЛЯ СМАРТФОНА: Фіксуємо екран, щоб додаток не совався */
-html, body, #root {
-  margin: 0;
-  padding: 0;
-  width: 100%;
-  height: 100%;
-  overflow: hidden; /* Забороняє випадкову прокрутку сторінки */
-  position: fixed; /* Приклеює додаток до екрану */
-  touch-action: none; /* Віддає контроль над жестами вашій програмі */
-  background-color: #f3f4f6;
-  -webkit-tap-highlight-color: transparent; /* Прибирає сині спалахи при натисканні */
+/* Цей код приховує скролбар, але дозволяє скролити.
+   Використовується в App.tsx (клас no-scrollbar) */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+.no-scrollbar {
+  -ms-overflow-style: none;  /* IE and Edge */
+  scrollbar-width: none;  /* Firefox */
 }
 
 body {
+  margin: 0;
+  padding: 0;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
     'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
     sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-}
-
-/* Робимо кнопки зручними для пальця */
-button {
-  touch-action: manipulation; /* Прибирає затримку 0.3 сек перед натисканням */
-  cursor: pointer;
-}
-
-/* Покращуємо відображення на телефонах з вирізами (чубчиками) */
-.pb-safe {
-  padding-bottom: env(safe-area-inset-bottom);
-}
-
-code {
-  font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
-    monospace;
-}
-
-/* Скролбари (залишаємо ваші налаштування) */
-.custom-scrollbar::-webkit-scrollbar {
-  width: 4px;
-}
-.custom-scrollbar::-webkit-scrollbar-track {
-  background: #f1f1f1;
-}
-.custom-scrollbar::-webkit-scrollbar-thumb {
-  background: #888;
-  border-radius: 2px;
-}
-.custom-scrollbar::-webkit-scrollbar-thumb:hover {
-  background: #555;
-}
-
-.no-scrollbar::-webkit-scrollbar {
-  display: none;
-}
-.no-scrollbar {
-  -ms-overflow-style: none;
-  scrollbar-width: none;
 }
