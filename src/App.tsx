@@ -171,11 +171,12 @@ export default function App() {
   const [isStatsOpen, setIsStatsOpen] = useState(true);
   const [showTemplates, setShowTemplates] = useState(false); 
 
-  // AI State
+  // AI & Export State
   const [showAiModal, setShowAiModal] = useState(false);
   const [aiMessages, setAiMessages] = useState<ChatMessage[]>([]);
   const [aiInput, setAiInput] = useState("");
   const [aiLoading, setAiLoading] = useState(false);
+  const [previewHtml, setPreviewHtml] = useState<string | null>(null);
 
   // Refs
   const containerRef = useRef<HTMLDivElement>(null);
@@ -277,8 +278,6 @@ export default function App() {
             const pos = toSvg({x: sheet.x, y: sheet.y + sheet.length});
             const strokeW = isSiding ? 2 : 5;
             
-            // Logic for text inside PDF (SVG)
-            // Use same logic as display: vertical for non-siding
             const cx = sheet.width / 2;
             const cy = sheet.length / 2;
             const rotate = !isSiding ? -90 : 0;
@@ -299,9 +298,7 @@ export default function App() {
                     <rect width="${sheet.width}" height="${sheet.length}" fill="${sheet.color}" fill-opacity="0.15" stroke="#EF4444" stroke-width="${strokeW}" stroke-dasharray="20,10" />
                     
                     <g transform="translate(${cx}, ${cy}) rotate(${rotate})">
-                         <!-- Outline -->
                          <text x="0" y="0" text-anchor="middle" dominant-baseline="central" fill="none" stroke="white" stroke-width="${fontSize * 0.1}" font-size="${fontSize}" font-weight="bold" font-family="sans-serif">${labelText}</text>
-                         <!-- Text -->
                          <text x="0" y="0" text-anchor="middle" dominant-baseline="central" fill="#991B1B" font-size="${fontSize}" font-weight="bold" font-family="sans-serif">${labelText}</text>
                     </g>
                 </g>
@@ -399,24 +396,21 @@ export default function App() {
             .page-break { page-break-inside: avoid; margin-bottom: 20px; }
           }
           .print-controls {
-            position: fixed; bottom: 20px; right: 20px; display: flex; gap: 10px; z-index: 50;
+            position: fixed; bottom: 20px; right: 20px; left: 20px; display: flex; justify-content: center; z-index: 50;
           }
           .btn {
-            background: #2563EB; color: white; border: none; padding: 12px 20px; 
+            background: #2563EB; color: white; border: none; padding: 16px 24px; 
             border-radius: 50px; font-weight: bold; cursor: pointer; 
-            box-shadow: 0 4px 12px rgba(0,0,0,0.2); display: flex; items-center; gap: 8px;
-            font-size: 14px; transition: transform 0.1s;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3); display: flex; align-items: center; justify-content: center; gap: 8px;
+            font-size: 16px; width: 100%; max-width: 400px;
           }
           .btn:active { transform: scale(0.95); }
-          .btn-close { background: #DC2626; }
         </style>
       </head>
       <body>
-        <!-- Mobile Friendly Controls -->
         <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
         <div class="print-controls no-print">
-            <button class="btn btn-close" onclick="if(window.history.length > 1){ window.history.back(); } else { window.close(); }">✕ Закрити</button>
-            <button class="btn" onclick="var c=document.querySelector('.print-controls'); c.style.display='none'; html2pdf().set({margin:5, filename:'RoofMaster_Spec.pdf', html2canvas:{scale:2}, jsPDF:{unit:'mm',format:'a4',orientation:'portrait'}}).from(document.body).save().then(function(){c.style.display='flex';});">🖨️ Зберегти PDF</button>
+            <button class="btn" onclick="var c=document.querySelector('.print-controls'); c.style.display='none'; html2pdf().set({margin:5, filename:'RoofMaster_Spec.pdf', html2canvas:{scale:2}, jsPDF:{unit:'mm',format:'a4',orientation:'portrait'}}).from(document.body).save().then(function(){c.style.display='flex';});">🖨️ Завантажити PDF на телефон</button>
         </div>
 
         <div class="header">
@@ -487,14 +481,9 @@ export default function App() {
       </html>
     `;
 
-    // Use Blob approach which is more reliable on mobile devices
-    const blob = new Blob([htmlContent], { type: 'text/html;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    
-    const printWindow = window.open(url, '_blank');
-    if (!printWindow) {
-        alert("Будь ласка, дозвольте спливаючі вікна для збереження PDF.");
-    }
+    // Замість відкриття нового вікна, яке блокується в APK, 
+    // ми рендеримо HTML прямо в нашому React додатку.
+    setPreviewHtml(htmlContent);
   };
 
   // --- AI Logic ---
@@ -637,13 +626,11 @@ export default function App() {
     const { x, y } = getPointerPos(e);
     
     if (isAddingGuide && type === 'bg') {
-        // Add vertical guide immediately on click
         const rect = containerRef.current?.getBoundingClientRect();
         if (rect) {
             const scale = transform.current.scale;
             const svgX = (x - rect.left) / scale - transform.current.x / scale;
             
-            // Auto-select the new guide for immediate editing
             const newIndex = verticalGuides.length;
             setSelectedGuideIndex(newIndex);
             
@@ -781,10 +768,8 @@ export default function App() {
         const newPoints = [...points];
 
         if (lockedPoint === 'p1') {
-            // Точка 1 зафіксована, рухаємо Точку 2
             newPoints[i2] = { x: p1.x + dx * ratio, y: p1.y + dy * ratio };
         } else {
-            // Точка 2 зафіксована, рухаємо Точку 1 у протилежному напрямку
             newPoints[i1] = { x: p2.x - dx * ratio, y: p2.y - dy * ratio };
         }
         return newPoints;
@@ -837,22 +822,18 @@ export default function App() {
   };
 
   const getMergedSegments = (minVal: number, maxVal: number, isVertical: boolean) => {
-      // 1. Базові лінії сканування (з невеликим відступом всередину)
       let scanLines = [minVal + 1, maxVal - 1, (minVal + maxVal) / 2];
       
-      // 2. Додаємо всі вершини, що потрапляють всередину діапазону (для точного визначення ширини складних фігур)
       const allPolys = [vertices, ...holes];
       allPolys.forEach(poly => {
           poly.forEach(p => {
               const val = isVertical ? p.x : p.y;
-              // Fix: Враховуємо вершини, що лежать точно на межах ряду (>= та <=)
               if (val >= minVal && val <= maxVal) {
                   scanLines.push(val);
               }
           });
       });
 
-      // Сортуємо та прибираємо дублікати
       scanLines = [...new Set(scanLines)].sort((a, b) => a - b);
 
       let segments: [number, number][] = [];
@@ -870,7 +851,6 @@ export default function App() {
       let current = segments[0];
       for (let i = 1; i < segments.length; i++) {
           const next = segments[i];
-          // Об'єднуємо сегменти, якщо вони перетинаються або торкаються (<= замість <)
           if (next[0] <= current[1]) {
               current[1] = Math.max(current[1], next[1]);
           } else { 
@@ -883,7 +863,6 @@ export default function App() {
   };
 
   const calculateLayout = useCallback(() => {
-    // Only calculate for ACTIVE slope
     const minX = Math.min(...vertices.map(p => p.x));
     const maxX = Math.max(...vertices.map(p => p.x));
     const minY = Math.min(...vertices.map(p => p.y));
@@ -904,71 +883,47 @@ export default function App() {
     };
 
     if (material.type === 'siding') {
-        // --- SIDING: Horizontal Strips ---
         const gridOriginY = maxY + layoutOffset.y; 
         const startRow = 0;
-        // Calculate needed rows to cover full height from minY to maxY
         const totalHeight = maxY - minY;
         const endRow = Math.ceil(totalHeight / material.effectiveWidth) + 2; 
 
         for (let i = startRow; i <= endRow; i++) {
-             // Calculate strip boundaries (going UP from bottom, physically)
-             // Visual: Siding is usually installed from bottom up
              const stripBottom = gridOriginY - i * material.effectiveWidth;
              const stripTop = stripBottom - material.effectiveWidth;
              
-             // Check if this horizontal strip intersects with the bounding box of the roof
              if (stripBottom < minY && stripTop < minY) continue; 
              if (stripTop > maxY && stripBottom > maxY) continue;
 
-             // Find horizontal segments where roof exists in this strip
-             const segments = getMergedSegments(stripTop, stripBottom, false); // false = horizontal intersection scan
+             const segments = getMergedSegments(stripTop, stripBottom, false); 
              
              const panelOriginX = minX + layoutOffset.x;
-             // Siding step is horizontal. 
-             // stepX defines where the NEXT panel starts. 
-             // Ideally stepX = maxLength - overlap.
              const stepX = maxLength - overlap;
 
              segments.forEach(([xMin, xMax]) => {
-                 // xMin and xMax are the absolute X boundaries of the roof shape at this Y level.
-                 // We need to cover the range [xMin, xMax].
-
-                 // Calculate index of the first potential panel that could cover xMin
                  const startM = Math.floor((xMin - panelOriginX) / stepX);
-                 
-                 // Estimate how many panels we need to cover the width
                  const count = Math.ceil((xMax - xMin) / stepX) + 2;
 
                  for (let offset = 0; offset < count; offset++) {
                      const m = startM + offset;
                      
-                     // Theoretical panel coordinates (if it were a full infinite grid)
                      const theoLeft = panelOriginX + m * stepX;
                      const theoRight = theoLeft + maxLength;
 
-                     // Calculate the INTERSECTION of the theoretical panel with the actual roof segment.
-                     // This determines the physical piece we need to cut/install.
                      const visibleLeft = Math.max(theoLeft, xMin);
                      const visibleRight = Math.min(theoRight, xMax);
                      
                      const visibleWidth = visibleRight - visibleLeft;
 
-                     // If this panel is completely outside the roof segment, skip it
                      if (visibleWidth <= 1) continue;
-
-                     // Specification Logic:
-                     // The 'label' should reflect the cut length. 
-                     // visibleWidth is exactly the length of the piece needed to cover the area from visibleLeft to visibleRight.
-                     // (Taking into account that overlap is handled by the positioning of adjacent panels via stepX).
                      
                      newSheets.push({
                          id: `s-${i}-${m}`,
                          x: visibleLeft,
-                         y: stripTop, // Visual position
+                         y: stripTop,
                          width: Math.round(visibleWidth), 
-                         length: material.totalWidth, // Height of panel
-                         label: Math.round(visibleWidth), // Real cut length for spec
+                         length: material.totalWidth,
+                         label: Math.round(visibleWidth),
                          fullLength: Math.round(visibleWidth),
                          color: COLORS[Math.abs(i) % COLORS.length],
                          row: i
@@ -977,9 +932,7 @@ export default function App() {
              });
         }
     } else {
-        // --- TILE, PROFILE & PICKET: Vertical Strips ---
         const gridOriginX = minX + layoutOffset.x;
-        // Determine column range to cover minX to maxX
         const startK = Math.floor((minX - gridOriginX) / material.effectiveWidth);
         const endK = Math.floor((maxX - gridOriginX) / material.effectiveWidth) + 1;
         
@@ -989,14 +942,11 @@ export default function App() {
             if (waveCount > 0) stepY = waveCount * tileWave;
         }
 
-        // PICKET CALCULATION HELPERS
         const slopeWidth = maxX - minX;
         const centerX = minX + slopeWidth / 2;
-        // Точно визначаємо індекси ПЕРШОГО і ОСТАННЬОГО фактично видимого штахетника
         const actualStartK = Math.floor((minX - gridOriginX) / material.effectiveWidth);
         const actualEndK = Math.ceil((maxX - gridOriginX) / material.effectiveWidth) - 1;
         const totalPickets = Math.max(1, actualEndK - actualStartK + 1);
-        // Розраховуємо центр САМЕ паркану (а не креслення)
         const realFenceWidth = totalPickets * material.effectiveWidth;
         const realStartX = gridOriginX + actualStartK * material.effectiveWidth;
         const realCenterX = realStartX + realFenceWidth / 2;
@@ -1004,48 +954,32 @@ export default function App() {
         for (let i = startK; i <= endK; i++) {
            const stripLeft = gridOriginX + i * material.effectiveWidth;
            const stripRight = stripLeft + material.effectiveWidth;
-           const stripCenter = stripLeft + material.effectiveWidth / 2; // Center of current picket/sheet
+           const stripCenter = stripLeft + material.effectiveWidth / 2; 
            
-           // Find vertical segments where roof exists in this vertical strip
-           const segments = getMergedSegments(stripLeft, stripRight, true); // true = vertical intersection scan
+           const segments = getMergedSegments(stripLeft, stripRight, true); 
 
            segments.forEach(([yMin, yMax]) => {
-                // yMin = bottom-most point of roof segment in this strip
-                // yMax = top-most point
-                
-                // We need to cover from yMin to yMax
-                // Sheets usually start from bottom (yMin) and go up
-                // Start sheet alignment from yMin
-                
-                // Calculate number of sheets needed
                 const totalLen = yMax - yMin;
                 if (totalLen <= 0) return;
 
-                // Calculate sheet positions
-                let currentY = yMin; // Start from bottom
+                let currentY = yMin;
                 let sheetIndex = 0;
 
                 while (currentY < yMax) {
-                    let neededLen = maxLength; // Default to max length
+                    let neededLen = maxLength; 
                     
-                    // If this is the last sheet or only sheet
                     if (currentY + neededLen >= yMax) {
                         neededLen = yMax - currentY;
                     }
                     
-                    // Visual adjustments for Tile
                     let visualLen = neededLen;
                     let orderedLen = neededLen;
                     
                     if (isTile) {
-                         // Logic for tile wave snapping
                          if (currentY + maxLength < yMax) {
-                             // Middle sheet
                              orderedLen = stepY + overlap;
                              visualLen = stepY + overlap;
                          } else {
-                             // Top sheet
-                             // Add overlap to required physical length if it's not the first sheet
                              let physicalNeeded = neededLen;
                              if (sheetIndex > 0) physicalNeeded += overlap;
                              
@@ -1053,54 +987,42 @@ export default function App() {
                              visualLen = neededLen; 
                          }
                     } else if (material.type === 'picket') {
-                        // --- PICKET ARCH LOGIC ---
                         const availableHeight = totalLen;
-                        // Fix: Використовуємо реальну висоту секції як базу, якщо вона менша за налаштування макс. довжини.
-                        // Це запобігає ситуації, коли арка "зрізається" плоскою лінією верху секції.
                         let peakHeight = Math.min(material.maxLength, availableHeight);
                         
-                        let picketH = peakHeight; // Default to peak
+                        let picketH = peakHeight; 
 
                         if (material.picketProfile && material.picketProfile !== 'straight') {
-                            const dist = Math.abs(stripCenter - realCenterX); // Відстань від центру
-                            const W = realFenceWidth; // Ширина всієї секції
-                            const H = material.archHeight || 0; // Глибина арки
+                            const dist = Math.abs(stripCenter - realCenterX); 
+                            const W = realFenceWidth; 
+                            const H = material.archHeight || 0; 
                             
                             if (H > 0 && W > 0) {
-                                // Розрахунок радіуса кола: R = H/2 + W^2 / 8H
                                 const R = (H / 2) + ((W * W) / (8 * H));
-                                const safeDist = Math.min(dist, R); // Запобіжник
+                                const safeDist = Math.min(dist, R); 
                                 
-                                // Висота точки на колі
                                 const arcOffset = Math.sqrt(R * R - safeDist * safeDist) - (R - H);
                                 
                                 if (material.picketProfile === 'convex') {
-                                    // Опукла (гірка): центр найвищий
                                     picketH = (peakHeight - H) + arcOffset;
                                 } else if (material.picketProfile === 'concave') {
-                                    // Увігнута (сідло): центр найнижчий
                                     picketH = peakHeight - arcOffset;
                                 }
                             }
                         }
 
-                        // Round to nearest 10mm
                         picketH = Math.round(picketH / 10) * 10;
                         
-                        // Clip to geometric limits (can't be taller than the drawn box)
                         if (picketH > availableHeight) picketH = Math.floor(availableHeight / 10) * 10;
                         if (picketH < 0) picketH = 0;
 
                         orderedLen = picketH;
                         visualLen = picketH;
                     } else {
-                        // Profile
                         if (currentY + maxLength < yMax) {
-                            // Full sheet in middle
                             visualLen = maxLength;
                             orderedLen = maxLength;
                         } else {
-                            // Top sheet
                              let physicalNeeded = neededLen;
                              if (sheetIndex > 0) physicalNeeded += overlap;
                              orderedLen = physicalNeeded;
@@ -1109,19 +1031,17 @@ export default function App() {
                     }
 
                     if (visualLen > 10) {
-                        // For Picket: Y position is fixed at bottom
                         let displayY = currentY;
                         if (material.type === 'picket') {
-                             // Pickets sit on the bottom line (yMin)
                              displayY = yMin;
                         }
 
                          newSheets.push({
                             id: `s-${i}-${sheetIndex}-${currentY.toFixed(0)}`,
                             x: stripLeft,
-                            y: displayY, // Position from bottom
+                            y: displayY, 
                             width: material.totalWidth,
-                            length: Math.round(visualLen), // Visual height
+                            length: Math.round(visualLen), 
                             label: Math.round(orderedLen),
                             fullLength: Math.round(orderedLen),
                             color: COLORS[Math.abs(sheetIndex) % COLORS.length],
@@ -1129,11 +1049,10 @@ export default function App() {
                         });
                     }
 
-                    // Move up for next sheet
                     if (isTile) {
                         currentY += stepY;
                     } else if (material.type === 'picket') {
-                        currentY += 999999; // One picket per vertical slot
+                        currentY += 999999; 
                     } else {
                         currentY += (maxLength - overlap);
                     }
@@ -1167,17 +1086,15 @@ export default function App() {
           const px = p.x - cx;
           const py = p.y - cy;
           if (direction === 'cw') {
-              // 90 градусів за годинниковою
               return { x: cx + py, y: cy - px };
           } else {
-              // 90 градусів проти годинникової
               return { x: cx - py, y: cy + px };
           }
       };
 
       setVertices(prev => prev.map(rotatePoint));
       setHoles(prev => prev.map(hole => hole.map(rotatePoint)));
-      setVerticalGuides([]); // Скидаємо вертикальні направляючі, оскільки вони втрачають актуальність
+      setVerticalGuides([]); 
       setTimeout(fitView, 50);
   };
 
@@ -1448,7 +1365,6 @@ export default function App() {
     );
   }
 
-  // ... (The rest of the render block remains the same as previous) ...
   return (
     <div className="flex flex-col h-screen w-full bg-gray-100 text-gray-800 font-sans select-none overflow-hidden relative">
       
@@ -1466,7 +1382,6 @@ export default function App() {
              
              <div className="overflow-y-auto p-4 grid grid-cols-2 sm:grid-cols-3 gap-4">
                 {ROOF_TEMPLATES.map(tmpl => {
-                    // Розраховуємо SVG viewBox для правильного масштабування фігури в мініатюрі
                     const mapped = tmpl.points.map(p => ({ x: p.x, y: -p.y }));
                     const minX = Math.min(...mapped.map(p => p.x));
                     const maxX = Math.max(...mapped.map(p => p.x));
@@ -1627,9 +1542,9 @@ export default function App() {
 
       {/* CANVAS */}
       <main className="flex-1 relative overflow-hidden bg-gray-100 touch-none w-full">
-          
-          {/* STATS PANEL */}
-          {step !== 'material' && (
+         
+         {/* STATS PANEL */}
+         {step !== 'material' && (
              <div className="absolute top-4 left-4 z-40">
                 {isStatsOpen ? (
                     <div className="bg-white/90 backdrop-blur-md shadow-lg rounded-xl border border-gray-200 p-3 w-48 transition-all animate-in fade-in slide-in-from-left-4">
@@ -1714,308 +1629,308 @@ export default function App() {
                     </button>
                 )}
              </div>
-          )}
+         )}
 
-          {/* LAYOUT MOVER CONTROLS */}
-          {step === 'layout' && (
-              <div className="absolute bottom-4 right-4 z-40 flex flex-col items-center gap-1 bg-white/90 p-2 rounded-xl shadow-lg border border-gray-200 backdrop-blur-sm">
-                  <span className="text-[10px] font-bold text-gray-400 uppercase mb-1">Зсув (1см)</span>
-                  <button onClick={() => moveLayout(0, -10)} className="p-2 bg-gray-100 hover:bg-gray-200 rounded-lg active:bg-gray-300 transition" title="Вгору">
-                    <ArrowUp size={20} className="text-gray-700"/>
-                  </button>
-                  <div className="flex gap-1">
-                      <button onClick={() => moveLayout(-10, 0)} className="p-2 bg-gray-100 hover:bg-gray-200 rounded-lg active:bg-gray-300 transition" title="Вліво">
-                        <ArrowLeft size={20} className="text-gray-700"/>
-                      </button>
-                      <button onClick={() => moveLayout(10, 0)} className="p-2 bg-gray-100 hover:bg-gray-200 rounded-lg active:bg-gray-300 transition" title="Вправо">
-                        <ArrowRight size={20} className="text-gray-700"/>
-                      </button>
-                  </div>
-                  <button onClick={() => moveLayout(0, 10)} className="p-2 bg-gray-100 hover:bg-gray-200 rounded-lg active:bg-gray-300 transition" title="Вниз">
-                    <ArrowDown size={20} className="text-gray-700"/>
-                  </button>
-              </div>
-          )}
+         {/* LAYOUT MOVER CONTROLS */}
+         {step === 'layout' && (
+             <div className="absolute bottom-4 right-4 z-40 flex flex-col items-center gap-1 bg-white/90 p-2 rounded-xl shadow-lg border border-gray-200 backdrop-blur-sm">
+                 <span className="text-[10px] font-bold text-gray-400 uppercase mb-1">Зсув (1см)</span>
+                 <button onClick={() => moveLayout(0, -10)} className="p-2 bg-gray-100 hover:bg-gray-200 rounded-lg active:bg-gray-300 transition" title="Вгору">
+                   <ArrowUp size={20} className="text-gray-700"/>
+                 </button>
+                 <div className="flex gap-1">
+                     <button onClick={() => moveLayout(-10, 0)} className="p-2 bg-gray-100 hover:bg-gray-200 rounded-lg active:bg-gray-300 transition" title="Вліво">
+                       <ArrowLeft size={20} className="text-gray-700"/>
+                     </button>
+                     <button onClick={() => moveLayout(10, 0)} className="p-2 bg-gray-100 hover:bg-gray-200 rounded-lg active:bg-gray-300 transition" title="Вправо">
+                       <ArrowRight size={20} className="text-gray-700"/>
+                     </button>
+                 </div>
+                 <button onClick={() => moveLayout(0, 10)} className="p-2 bg-gray-100 hover:bg-gray-200 rounded-lg active:bg-gray-300 transition" title="Вниз">
+                   <ArrowDown size={20} className="text-gray-700"/>
+                 </button>
+             </div>
+         )}
 
-          <div 
-            ref={containerRef}
-            className="absolute inset-0 w-full h-full cursor-crosshair"
-            onPointerDown={(e) => handlePointerDown(e, 'bg')}
-            onPointerMove={handlePointerMove}
-            onPointerUp={handlePointerUp}
-            onPointerLeave={handlePointerUp}
-          >
-            {/* FORCE RECENTER BUTTON & ZOOM CONTROLS */}
-            <div className="absolute top-4 right-4 flex flex-col gap-2 z-40">
-               <button onClick={handleZoomIn} className="p-3 bg-white shadow-md rounded-full text-blue-600 active:bg-blue-50">
-                  <Plus size={24}/>
-               </button>
-               <button onClick={handleZoomOut} className="p-3 bg-white shadow-md rounded-full text-blue-600 active:bg-blue-50">
-                  <Minus size={24}/>
-               </button>
-               <button onClick={fitView} className="p-3 bg-white shadow-md rounded-full text-blue-600 active:bg-blue-50 mt-2">
-                  <Focus size={24}/>
-               </button>
-            </div>
+         <div 
+           ref={containerRef}
+           className="absolute inset-0 w-full h-full cursor-crosshair"
+           onPointerDown={(e) => handlePointerDown(e, 'bg')}
+           onPointerMove={handlePointerMove}
+           onPointerUp={handlePointerUp}
+           onPointerLeave={handlePointerUp}
+         >
+           {/* FORCE RECENTER BUTTON & ZOOM CONTROLS */}
+           <div className="absolute top-4 right-4 flex flex-col gap-2 z-40">
+              <button onClick={handleZoomIn} className="p-3 bg-white shadow-md rounded-full text-blue-600 active:bg-blue-50">
+                 <Plus size={24}/>
+              </button>
+              <button onClick={handleZoomOut} className="p-3 bg-white shadow-md rounded-full text-blue-600 active:bg-blue-50">
+                 <Minus size={24}/>
+              </button>
+              <button onClick={fitView} className="p-3 bg-white shadow-md rounded-full text-blue-600 active:bg-blue-50 mt-2">
+                 <Focus size={24}/>
+              </button>
+           </div>
 
-            <svg className="absolute inset-0 w-full h-full" style={{ overflow: 'visible' }}>
-              <defs>
-                  <GridBackground />
-                  <clipPath id="slope-clip">
-                      <path d={slopePath} clipRule="evenodd" />
-                  </clipPath>
-              </defs>
-              <g ref={canvasRef} style={{ transformOrigin: '0 0', willChange: 'transform' }}>
-                  <rect x="-10000" y="-10000" width="20000" height="20000" fill="url(#grid)" />
-                  
-                  {/* --- AXES (Visual Guides) --- */}
-                  <line x1="-10000" y1="0" x2="10000" y2="0" stroke="#EF4444" strokeWidth="3" strokeOpacity="0.5" /> {/* X-Axis (Red) */}
-                  <line x1="0" y1="-10000" x2="0" y2="10000" stroke="#10B981" strokeWidth="3" strokeOpacity="0.5" /> {/* Y-Axis (Green) */}
+           <svg className="absolute inset-0 w-full h-full" style={{ overflow: 'visible' }}>
+             <defs>
+                 <GridBackground />
+                 <clipPath id="slope-clip">
+                     <path d={slopePath} clipRule="evenodd" />
+                 </clipPath>
+             </defs>
+             <g ref={canvasRef} style={{ transformOrigin: '0 0', willChange: 'transform' }}>
+                 <rect x="-10000" y="-10000" width="20000" height="20000" fill="url(#grid)" />
+                 
+                 {/* --- AXES (Visual Guides) --- */}
+                 <line x1="-10000" y1="0" x2="10000" y2="0" stroke="#EF4444" strokeWidth="3" strokeOpacity="0.5" /> {/* X-Axis (Red) */}
+                 <line x1="0" y1="-10000" x2="0" y2="10000" stroke="#10B981" strokeWidth="3" strokeOpacity="0.5" /> {/* Y-Axis (Green) */}
 
-                  {/* --- 1. Background Fill (Bottom Layer) --- */}
-                  <path 
-                    d={slopePath}
-                    fill="#94A3B8" stroke="none" fillRule="evenodd" opacity="0.5"
-                  />
-                  
-                  {/* --- 2. Sheets (Middle Layer) --- */}
-                  {/* REMOVED CLIP PATH: Sheets now display as full rectangles overlapping the roof shape */}
-                  <g>
-                    {step === 'layout' && sheets.map(sheet => {
-                        const svgPos = toSvg({x: sheet.x, y: sheet.y + sheet.length});
-                        const isSiding = material.type === 'siding';
-                        const isPicket = material.type === 'picket';
-                        const strokeW = selectedSheetId === sheet.id ? 25 : (isSiding ? 2 : 5);
-                        
-                        // Text Configuration
-                        const rotateText = !isSiding; // Rotate for everything except Siding
-                        const cx = sheet.width / 2;
-                        const cy = sheet.length / 2;
+                 {/* --- 1. Background Fill (Bottom Layer) --- */}
+                 <path 
+                   d={slopePath}
+                   fill="#94A3B8" stroke="none" fillRule="evenodd" opacity="0.5"
+                 />
+                 
+                 {/* --- 2. Sheets (Middle Layer) --- */}
+                 {/* REMOVED CLIP PATH: Sheets now display as full rectangles overlapping the roof shape */}
+                 <g>
+                   {step === 'layout' && sheets.map(sheet => {
+                       const svgPos = toSvg({x: sheet.x, y: sheet.y + sheet.length});
+                       const isSiding = material.type === 'siding';
+                       const isPicket = material.type === 'picket';
+                       const strokeW = selectedSheetId === sheet.id ? 25 : (isSiding ? 2 : 5);
+                       
+                       // Text Configuration
+                       const rotateText = !isSiding; // Rotate for everything except Siding
+                       const cx = sheet.width / 2;
+                       const cy = sheet.length / 2;
 
-                        // Font Size Calculation
-                        let fontSize = 150;
-                        if (isSiding) {
-                            fontSize = sheet.length * 0.4;
-                        } else if (isPicket) {
-                            fontSize = Math.min(sheet.length * 0.4, 140); // Max 140 for picket to fit width visually
-                        } else {
-                            // Tile/Profile
-                            fontSize = Math.min(sheet.length * 0.3, sheet.width * 0.25);
-                            if (fontSize < 150) fontSize = 150; // Min legible size
-                        }
+                       // Font Size Calculation
+                       let fontSize = 150;
+                       if (isSiding) {
+                           fontSize = sheet.length * 0.4;
+                       } else if (isPicket) {
+                           fontSize = Math.min(sheet.length * 0.4, 140); // Max 140 for picket to fit width visually
+                       } else {
+                           // Tile/Profile
+                           fontSize = Math.min(sheet.length * 0.3, sheet.width * 0.25);
+                           if (fontSize < 150) fontSize = 150; // Min legible size
+                       }
 
-                        const labelText = sheet.label.toString();
+                       const labelText = sheet.label.toString();
 
-                        return (
-                            <g key={sheet.id} transform={`translate(${svgPos.x}, ${svgPos.y})`}
-                              onPointerDown={(e) => handlePointerDown(e, 'sheet', sheet.id)}
-                            >
-                              <rect 
-                                width={sheet.width} 
-                                height={sheet.length} 
-                                fill={sheet.color} 
-                                fillOpacity={0.2} // Increased opacity slightly for visibility
-                                stroke={selectedSheetId === sheet.id ? '#F97316' : '#EF4444'} 
-                                strokeWidth={strokeW} 
-                                strokeDasharray={selectedSheetId === sheet.id ? 'none' : '20,10'}
-                              />
-                              
-                              {/* Centered Text Group */}
-                              <g transform={`translate(${cx}, ${cy}) rotate(${rotateText ? -90 : 0})`}>
-                                  {/* Outline for contrast */}
-                                  <text 
-                                    textAnchor="middle" 
-                                    dominantBaseline="central"
-                                    fontSize={fontSize}
-                                    fontWeight="bold"
-                                    stroke="white"
-                                    strokeWidth={fontSize * 0.1}
-                                    fill="none"
-                                    className="pointer-events-none"
-                                  >
-                                    {labelText}
-                                  </text>
-                                  {/* Main Text */}
-                                  <text 
-                                    textAnchor="middle" 
-                                    dominantBaseline="central"
-                                    fontSize={fontSize}
-                                    fontWeight="bold"
-                                    fill={selectedSheetId === sheet.id ? '#C2410C' : '#7F1D1D'}
-                                    className="pointer-events-none"
-                                  >
-                                    {labelText}
-                                  </text>
-                              </g>
-                            </g>
-                        )
-                    })}
-                  </g>
-                  
-                  {/* --- 3. Outlines and Highlights (Top Layer) --- */}
-                  {/* Outer Stroke - Thin on top - BLUE */}
-                  <path 
-                    d={`M ${vertices.map(toSvg).map(p => `${p.x} ${p.y}`).join(' L ')} Z`}
-                    fill="none" stroke="#2563EB" strokeWidth="5" vectorEffect="non-scaling-stroke"
-                  />
-                  
-                  {/* Holes Stroke & Fill (RED) */}
-                  {holes.map((hole, hi) => (
-                    <g key={`hg-${hi}`}>
-                      <path 
-                        d={`M ${hole.map(toSvg).map(p => `${p.x} ${p.y}`).join(' L ')} Z`}
-                        fill="rgba(239, 68, 68, 0.2)" stroke="#EF4444" strokeWidth="4" strokeDasharray="10,10" vectorEffect="non-scaling-stroke"
-                      />
-                      {/* Central Move Handle for Hole */}
-                      {step === 'geometry' && (() => {
-                          const center = getCentroid(hole);
-                          const centerSvg = toSvg(center);
-                          const isSelected = selectedHoleIndex === hi;
-                          const fs = pointRadius * 1.5;
-                          return (
-                              <g 
-                                transform={`translate(${centerSvg.x}, ${centerSvg.y})`}
-                                onPointerDown={(e) => handlePointerDown(e, 'hole-move', hi)}
-                                className="cursor-move"
-                              >
-                                  <circle r={fs} fill={isSelected ? "#EF4444" : "white"} stroke="#DC2626" strokeWidth="4" />
-                                  <Move size={fs} x={-fs/2} y={-fs/2} color={isSelected ? "white" : "#DC2626"} />
-                              </g>
-                          )
-                      })()}
-                    </g>
-                  ))}
+                       return (
+                           <g key={sheet.id} transform={`translate(${svgPos.x}, ${svgPos.y})`}
+                             onPointerDown={(e) => handlePointerDown(e, 'sheet', sheet.id)}
+                           >
+                             <rect 
+                               width={sheet.width} 
+                               height={sheet.length} 
+                               fill={sheet.color} 
+                               fillOpacity={0.2} // Increased opacity slightly for visibility
+                               stroke={selectedSheetId === sheet.id ? '#F97316' : '#EF4444'} 
+                               strokeWidth={strokeW} 
+                               strokeDasharray={selectedSheetId === sheet.id ? 'none' : '20,10'}
+                             />
+                             
+                             {/* Centered Text Group */}
+                             <g transform={`translate(${cx}, ${cy}) rotate(${rotateText ? -90 : 0})`}>
+                                 {/* Outline for contrast */}
+                                 <text 
+                                   textAnchor="middle" 
+                                   dominantBaseline="central"
+                                   fontSize={fontSize}
+                                   fontWeight="bold"
+                                   stroke="white"
+                                   strokeWidth={fontSize * 0.1}
+                                   fill="none"
+                                   className="pointer-events-none"
+                                 >
+                                   {labelText}
+                                 </text>
+                                 {/* Main Text */}
+                                 <text 
+                                   textAnchor="middle" 
+                                   dominantBaseline="central"
+                                   fontSize={fontSize}
+                                   fontWeight="bold"
+                                   fill={selectedSheetId === sheet.id ? '#C2410C' : '#7F1D1D'}
+                                   className="pointer-events-none"
+                                 >
+                                   {labelText}
+                                 </text>
+                             </g>
+                           </g>
+                       )
+                   })}
+                 </g>
+                 
+                 {/* --- 3. Outlines and Highlights (Top Layer) --- */}
+                 {/* Outer Stroke - Thin on top - BLUE */}
+                 <path 
+                   d={`M ${vertices.map(toSvg).map(p => `${p.x} ${p.y}`).join(' L ')} Z`}
+                   fill="none" stroke="#2563EB" strokeWidth="5" vectorEffect="non-scaling-stroke"
+                 />
+                 
+                 {/* Holes Stroke & Fill (RED) */}
+                 {holes.map((hole, hi) => (
+                   <g key={`hg-${hi}`}>
+                     <path 
+                       d={`M ${hole.map(toSvg).map(p => `${p.x} ${p.y}`).join(' L ')} Z`}
+                       fill="rgba(239, 68, 68, 0.2)" stroke="#EF4444" strokeWidth="4" strokeDasharray="10,10" vectorEffect="non-scaling-stroke"
+                     />
+                     {/* Central Move Handle for Hole */}
+                     {step === 'geometry' && (() => {
+                         const center = getCentroid(hole);
+                         const centerSvg = toSvg(center);
+                         const isSelected = selectedHoleIndex === hi;
+                         const fs = pointRadius * 1.5;
+                         return (
+                             <g 
+                               transform={`translate(${centerSvg.x}, ${centerSvg.y})`}
+                               onPointerDown={(e) => handlePointerDown(e, 'hole-move', hi)}
+                               className="cursor-move"
+                             >
+                                 <circle r={fs} fill={isSelected ? "#EF4444" : "white"} stroke="#DC2626" strokeWidth="4" />
+                                 <Move size={fs} x={-fs/2} y={-fs/2} color={isSelected ? "white" : "#DC2626"} />
+                             </g>
+                         )
+                     })()}
+                   </g>
+                 ))}
 
-                  {/* Vertical Guides */}
-                  {step === 'geometry' && verticalGuides.map((gx, i) => {
-                      const svgG = toSvg({x: gx, y: 0});
-                      const isSelected = selectedGuideIndex === i;
-                      // Draw infinite line (within reasonable bounds)
-                      const minY = -200000;
-                      const maxY = 200000;
-                      return (
-                          <g key={`vg-${i}`} onPointerDown={(e) => handlePointerDown(e, 'guide', i)}>
-                              <line 
-                                x1={svgG.x} y1={minY} 
-                                x2={svgG.x} y2={maxY} 
-                                stroke={isSelected ? "#F97316" : "#2563EB"} 
-                                strokeWidth={isSelected ? 15 : 10} 
-                                strokeDasharray="40,20"
-                                className="cursor-col-resize hover:opacity-80"
-                              />
-                          </g>
-                      );
-                  })}
+                 {/* Vertical Guides */}
+                 {step === 'geometry' && verticalGuides.map((gx, i) => {
+                     const svgG = toSvg({x: gx, y: 0});
+                     const isSelected = selectedGuideIndex === i;
+                     // Draw infinite line (within reasonable bounds)
+                     const minY = -200000;
+                     const maxY = 200000;
+                     return (
+                         <g key={`vg-${i}`} onPointerDown={(e) => handlePointerDown(e, 'guide', i)}>
+                             <line 
+                               x1={svgG.x} y1={minY} 
+                               x2={svgG.x} y2={maxY} 
+                               stroke={isSelected ? "#F97316" : "#2563EB"} 
+                               strokeWidth={isSelected ? 15 : 10} 
+                               strokeDasharray="40,20"
+                               className="cursor-col-resize hover:opacity-80"
+                             />
+                         </g>
+                     );
+                 })}
 
-                  {/* Vertices (Outer) */}
-                  {step === 'geometry' && vertices.map((p, i) => {
-                    const svgP = toSvg(p);
-                    const isSelected = selectedVertex?.polyIndex === -1 && selectedVertex?.vertIndex === i;
-                    return (
-                        <g key={`v-${i}`} transform={`translate(${svgP.x}, ${svgP.y})`}
-                            onPointerDown={(e) => handlePointerDown(e, 'vertex', { polyIndex: -1, vertIndex: i })}
-                        >
-                            <circle r={pointRadius * 3} fill="transparent" /> 
-                            <circle r={pointRadius * (isSelected ? 1.2 : 0.8)} fill={isSelected ? "#16A34A" : "white"} stroke={isSelected ? "#15803D" : "#2563EB"} strokeWidth={pointRadius*0.3} />
-                            <text y={-pointRadius*1.5} textAnchor="middle" fill={isSelected ? "#15803D" : "#2563EB"} fontSize={pointRadius*1.2} fontWeight="bold" className="pointer-events-none">{i+1}</text>
-                        </g>
-                    )
-                  })}
+                 {/* Vertices (Outer) */}
+                 {step === 'geometry' && vertices.map((p, i) => {
+                   const svgP = toSvg(p);
+                   const isSelected = selectedVertex?.polyIndex === -1 && selectedVertex?.vertIndex === i;
+                   return (
+                       <g key={`v-${i}`} transform={`translate(${svgP.x}, ${svgP.y})`}
+                           onPointerDown={(e) => handlePointerDown(e, 'vertex', { polyIndex: -1, vertIndex: i })}
+                       >
+                           <circle r={pointRadius * 3} fill="transparent" /> 
+                           <circle r={pointRadius * (isSelected ? 1.2 : 0.8)} fill={isSelected ? "#16A34A" : "white"} stroke={isSelected ? "#15803D" : "#2563EB"} strokeWidth={pointRadius*0.3} />
+                           <text y={-pointRadius*1.5} textAnchor="middle" fill={isSelected ? "#15803D" : "#2563EB"} fontSize={pointRadius*1.2} fontWeight="bold" className="pointer-events-none">{i+1}</text>
+                       </g>
+                   )
+                 })}
 
-                  {/* Hole Vertices */}
-                  {step === 'geometry' && holes.map((hole, hi) => (
-                      hole.map((p, i) => {
-                        const svgP = toSvg(p);
-                        const isSelected = selectedVertex?.polyIndex === hi && selectedVertex?.vertIndex === i;
-                        return (
-                            <g key={`h-${hi}-${i}`} transform={`translate(${svgP.x}, ${svgP.y})`}
-                                onPointerDown={(e) => handlePointerDown(e, 'vertex', { polyIndex: hi, vertIndex: i })}
-                            >
-                                <circle r={pointRadius * 3} fill="transparent" /> 
-                                <circle r={pointRadius * (isSelected ? 1.2 : 0.8)} fill={isSelected ? "#16A34A" : "white"} stroke={isSelected ? "#15803D" : "#EF4444"} strokeWidth={pointRadius*0.3} />
-                            </g>
-                        )
-                      })
-                  ))}
+                 {/* Hole Vertices */}
+                 {step === 'geometry' && holes.map((hole, hi) => (
+                     hole.map((p, i) => {
+                       const svgP = toSvg(p);
+                       const isSelected = selectedVertex?.polyIndex === hi && selectedVertex?.vertIndex === i;
+                       return (
+                           <g key={`h-${hi}-${i}`} transform={`translate(${svgP.x}, ${svgP.y})`}
+                               onPointerDown={(e) => handlePointerDown(e, 'vertex', { polyIndex: hi, vertIndex: i })}
+                           >
+                               <circle r={pointRadius * 3} fill="transparent" /> 
+                               <circle r={pointRadius * (isSelected ? 1.2 : 0.8)} fill={isSelected ? "#16A34A" : "white"} stroke={isSelected ? "#15803D" : "#EF4444"} strokeWidth={pointRadius*0.3} />
+                           </g>
+                       )
+                     })
+                 ))}
 
-                  {/* Interactive Dimensions (Outer Only for simplicity) */}
-                  {step === 'geometry' && vertices.map((p, i) => {
-                    const next = vertices[(i+1)%vertices.length];
-                    const svgP = toSvg(p);
-                    const svgNext = toSvg(next);
-                    const mx = (svgP.x+svgNext.x)/2;
-                    const my = (svgP.y+svgNext.y)/2;
-                    const dist = Math.hypot(next.x-p.x, next.y-p.y);
-                    const fs = pointRadius * 1.0;
-                    const isSelected = selectedEdge?.polyIndex === -1 && selectedEdge?.vertIndex === i;
-                    return (
-                      <g 
-                        key={`d-${i}`} 
-                        onClick={(e) => { 
-                            e.stopPropagation(); 
-                            setSelectedEdge({ polyIndex: -1, vertIndex: i }); 
-                            setIsEditingHeight(false);
-                            setSelectedVertex(null);
-                            setManualLength(Math.round(dist).toString());
-                        }}
-                        className="cursor-pointer hover:opacity-80"
-                      >
-                          <rect 
-                            x={mx - fs*2.5} y={my - fs/1.2} 
-                            width={fs*5} height={fs*1.8} 
-                            rx={fs/2} 
-                            fill={isSelected ? "#2563EB" : "white"} 
-                            stroke={isSelected ? "#1D4ED8" : "#CBD5E1"} 
-                            strokeWidth="5"
-                          />
-                          <text 
-                            x={mx} y={my + fs/2.5} 
-                            textAnchor="middle" 
-                            fontSize={fs} 
-                            fill={isSelected ? "white" : "#1E293B"} 
-                            fontWeight="bold"
-                          >
-                            {Math.round(dist)}
-                          </text>
-                      </g>
-                    )
-                  })}
-                  
-                  {/* Height Dimension (Vertical Center) - RESTORED */}
-                  {step === 'geometry' && (() => {
-                      // Calculations in World Space based on active slope vertices
-                      const ys = vertices.map(p => p.y);
-                      const minY = Math.min(...ys);
-                      const maxY = Math.max(...ys);
-                      const xs = vertices.map(p => p.x);
-                      const minX = Math.min(...xs);
-                      const maxX = Math.max(...xs);
-                      const centerX = (minX + maxX) / 2;
-                      const height = maxY - minY;
-                      const fs = pointRadius * 1.0;
-                      
-                      // Convert to SVG for rendering
-                      const svgTop = toSvg({x: centerX, y: maxY});
-                      const svgBottom = toSvg({x: centerX, y: minY});
-                      
-                      return (
-                          <g 
-                            onClick={(e) => {
-                                e.stopPropagation();
-                                setIsEditingHeight(true);
-                                setSelectedEdge(null);
-                                setSelectedVertex(null);
-                                setManualLength(Math.round(height).toString());
-                            }}
-                            className="cursor-pointer hover:opacity-80 group"
-                          >
+                 {/* Interactive Dimensions (Outer Only for simplicity) */}
+                 {step === 'geometry' && vertices.map((p, i) => {
+                   const next = vertices[(i+1)%vertices.length];
+                   const svgP = toSvg(p);
+                   const svgNext = toSvg(next);
+                   const mx = (svgP.x+svgNext.x)/2;
+                   const my = (svgP.y+svgNext.y)/2;
+                   const dist = Math.hypot(next.x-p.x, next.y-p.y);
+                   const fs = pointRadius * 1.0;
+                   const isSelected = selectedEdge?.polyIndex === -1 && selectedEdge?.vertIndex === i;
+                   return (
+                     <g 
+                       key={`d-${i}`} 
+                       onClick={(e) => { 
+                           e.stopPropagation(); 
+                           setSelectedEdge({ polyIndex: -1, vertIndex: i }); 
+                           setIsEditingHeight(false);
+                           setSelectedVertex(null);
+                           setManualLength(Math.round(dist).toString());
+                       }}
+                       className="cursor-pointer hover:opacity-80"
+                     >
+                         <rect 
+                           x={mx - fs*2.5} y={my - fs/1.2} 
+                           width={fs*5} height={fs*1.8} 
+                           rx={fs/2} 
+                           fill={isSelected ? "#2563EB" : "white"} 
+                           stroke={isSelected ? "#1D4ED8" : "#CBD5E1"} 
+                           strokeWidth="5"
+                         />
+                         <text 
+                           x={mx} y={my + fs/2.5} 
+                           textAnchor="middle" 
+                           fontSize={fs} 
+                           fill={isSelected ? "white" : "#1E293B"} 
+                           fontWeight="bold"
+                         >
+                           {Math.round(dist)}
+                         </text>
+                     </g>
+                   )
+                 })}
+                 
+                 {/* Height Dimension (Vertical Center) - RESTORED */}
+                 {step === 'geometry' && (() => {
+                     // Calculations in World Space based on active slope vertices
+                     const ys = vertices.map(p => p.y);
+                     const minY = Math.min(...ys);
+                     const maxY = Math.max(...ys);
+                     const xs = vertices.map(p => p.x);
+                     const minX = Math.min(...xs);
+                     const maxX = Math.max(...xs);
+                     const centerX = (minX + maxX) / 2;
+                     const height = maxY - minY;
+                     const fs = pointRadius * 1.0;
+                     
+                     // Convert to SVG for rendering
+                     const svgTop = toSvg({x: centerX, y: maxY});
+                     const svgBottom = toSvg({x: centerX, y: minY});
+                     
+                     return (
+                         <g 
+                           onClick={(e) => {
+                               e.stopPropagation();
+                               setIsEditingHeight(true);
+                               setSelectedEdge(null);
+                               setSelectedVertex(null);
+                               setManualLength(Math.round(height).toString());
+                           }}
+                           className="cursor-pointer hover:opacity-80 group"
+                         >
                              {/* Vertical Dashed Line */}
                              <line 
-                                x1={centerX} y1={svgBottom.y} 
-                                x2={centerX} y2={svgTop.y} 
-                                stroke={isEditingHeight ? "#8B5CF6" : "#A78BFA"} 
-                                strokeWidth="4" 
-                                strokeDasharray="20,20"
+                               x1={centerX} y1={svgBottom.y} 
+                               x2={centerX} y2={svgTop.y} 
+                               stroke={isEditingHeight ? "#8B5CF6" : "#A78BFA"} 
+                               strokeWidth="4" 
+                               strokeDasharray="20,20"
                              />
                              {/* Top/Bottom Arrows */}
                              <path d={`M ${centerX} ${svgBottom.y} L ${centerX-15} ${svgBottom.y-30} L ${centerX+15} ${svgBottom.y-30} Z`} fill={isEditingHeight ? "#8B5CF6" : "#A78BFA"} />
@@ -2023,74 +1938,74 @@ export default function App() {
                              
                              {/* Label Box */}
                              <rect 
-                                x={centerX - fs*3} y={(svgTop.y+svgBottom.y)/2 - fs} 
-                                width={fs*6} height={fs*2} 
-                                rx={fs/2} 
-                                fill={isEditingHeight ? "#8B5CF6" : "white"} 
-                                stroke={isEditingHeight ? "#7C3AED" : "#C4B5FD"} 
-                                strokeWidth="5"
+                               x={centerX - fs*3} y={(svgTop.y+svgBottom.y)/2 - fs} 
+                               width={fs*6} height={fs*2} 
+                               rx={fs/2} 
+                               fill={isEditingHeight ? "#8B5CF6" : "white"} 
+                               stroke={isEditingHeight ? "#7C3AED" : "#C4B5FD"} 
+                               strokeWidth="5"
                              />
                              <text 
-                                x={centerX} y={(svgTop.y+svgBottom.y)/2 + fs/2.5} 
-                                textAnchor="middle" 
-                                fontSize={fs} 
-                                fill={isEditingHeight ? "white" : "#6D28D9"} 
-                                fontWeight="bold"
-                                className="flex items-center"
+                               x={centerX} y={(svgTop.y+svgBottom.y)/2 + fs/2.5} 
+                               textAnchor="middle" 
+                               fontSize={fs} 
+                               fill={isEditingHeight ? "white" : "#6D28D9"} 
+                               fontWeight="bold"
+                               className="flex items-center"
                              >
                                 {Math.round(height)}
                              </text>
-                          </g>
-                      );
-                  })()}
+                         </g>
+                     );
+                 })()}
 
-                  {/* Hole Dimensions */}
-                  {step === 'geometry' && holes.map((hole, hi) => (
-                      hole.map((p, i) => {
-                        const next = hole[(i+1)%hole.length];
-                        const svgP = toSvg(p);
-                        const svgNext = toSvg(next);
-                        const mx = (svgP.x+svgNext.x)/2;
-                        const my = (svgP.y+svgNext.y)/2;
-                        const dist = Math.hypot(next.x-p.x, next.y-p.y);
-                        const fs = pointRadius * 0.8;
-                        const isSelected = selectedEdge?.polyIndex === hi && selectedEdge?.vertIndex === i;
-                        return (
-                          <g 
-                            key={`hd-${hi}-${i}`} 
-                            onClick={(e) => { 
-                                e.stopPropagation(); 
-                                setSelectedEdge({ polyIndex: hi, vertIndex: i }); 
-                                setIsEditingHeight(false);
-                                setSelectedVertex(null);
-                                setManualLength(Math.round(dist).toString());
-                            }}
-                            className="cursor-pointer hover:opacity-80"
-                          >
-                              <rect 
-                                x={mx - fs*2.5} y={my - fs/1.2} 
-                                width={fs*5} height={fs*1.8} 
-                                rx={fs/2} 
-                                fill={isSelected ? "#EF4444" : "white"} 
-                                stroke={isSelected ? "#B91C1C" : "#FECACA"} 
-                                strokeWidth="5"
-                              />
-                              <text 
-                                x={mx} y={my + fs/2.5} 
-                                textAnchor="middle" 
-                                fontSize={fs} 
-                                fill={isSelected ? "white" : "#991B1B"} 
-                                fontWeight="bold"
-                              >
-                                {Math.round(dist)}
-                              </text>
-                          </g>
-                        )
-                      })
-                  ))}
-              </g>
-            </svg>
-          </div>
+                 {/* Hole Dimensions */}
+                 {step === 'geometry' && holes.map((hole, hi) => (
+                     hole.map((p, i) => {
+                       const next = hole[(i+1)%hole.length];
+                       const svgP = toSvg(p);
+                       const svgNext = toSvg(next);
+                       const mx = (svgP.x+svgNext.x)/2;
+                       const my = (svgP.y+svgNext.y)/2;
+                       const dist = Math.hypot(next.x-p.x, next.y-p.y);
+                       const fs = pointRadius * 0.8;
+                       const isSelected = selectedEdge?.polyIndex === hi && selectedEdge?.vertIndex === i;
+                       return (
+                         <g 
+                           key={`hd-${hi}-${i}`} 
+                           onClick={(e) => { 
+                               e.stopPropagation(); 
+                               setSelectedEdge({ polyIndex: hi, vertIndex: i }); 
+                               setIsEditingHeight(false);
+                               setSelectedVertex(null);
+                               setManualLength(Math.round(dist).toString());
+                           }}
+                           className="cursor-pointer hover:opacity-80"
+                         >
+                             <rect 
+                               x={mx - fs*2.5} y={my - fs/1.2} 
+                               width={fs*5} height={fs*1.8} 
+                               rx={fs/2} 
+                               fill={isSelected ? "#EF4444" : "white"} 
+                               stroke={isSelected ? "#B91C1C" : "#FECACA"} 
+                               strokeWidth="5"
+                             />
+                             <text 
+                               x={mx} y={my + fs/2.5} 
+                               textAnchor="middle" 
+                               fontSize={fs} 
+                               fill={isSelected ? "white" : "#991B1B"} 
+                               fontWeight="bold"
+                             >
+                               {Math.round(dist)}
+                             </text>
+                         </g>
+                       )
+                     })
+                 ))}
+             </g>
+           </svg>
+         </div>
       </main>
 
       {/* FOOTER */}
@@ -2326,6 +2241,26 @@ export default function App() {
              )
          )}
       </div>
+
+      {/* PDF PREVIEW OVERLAY */}
+      {previewHtml && (
+          <div className="fixed inset-0 z-[100] bg-gray-100 flex flex-col">
+              <div className="bg-blue-600 text-white h-14 flex justify-between items-center px-4 shadow-md shrink-0">
+                  <span className="font-bold flex items-center gap-2"><FileText size={18}/> Документ</span>
+                  <button onClick={() => setPreviewHtml(null)} className="bg-white/20 p-2 rounded-full active:bg-white/30 transition">
+                      <X size={20} />
+                  </button>
+              </div>
+              <div className="flex-1 w-full bg-white relative">
+                  <iframe
+                      srcDoc={previewHtml}
+                      className="absolute inset-0 w-full h-full border-none"
+                      title="PDF Preview"
+                  />
+              </div>
+          </div>
+      )}
+
     </div>
   );
 }
