@@ -1,0 +1,6 @@
+{
+  "appId": "com.roofmaster.app",
+  "appName": "Roof Master",
+  "webDir": "dist",
+  "bundledWebRuntime": false
+}
