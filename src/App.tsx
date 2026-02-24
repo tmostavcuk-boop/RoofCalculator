@@ -8,7 +8,7 @@ import {
   Square, Scissors, Layers, ChevronDown, ChevronUp, FileText,
   MinusSquare, Move, TrendingUp, TrendingDown, Minus, ArrowUpDown, Crosshair,
   Plus, Download, ArrowUp, ArrowDown, ArrowLeft, LayoutTemplate,
-  Copy, Edit2, Check, Split
+  Copy, Edit2, Check, Split, RotateCcw, RotateCw
 } from 'lucide-react';
 
 // --- Types ---
@@ -74,8 +74,6 @@ const ROOF_TEMPLATES = [
   { id: 'l', name: 'Г-подібний', points: [{x:-2000,y:0}, {x:-2000,y:4000}, {x:0,y:4000}, {x:0,y:2000}, {x:2000,y:2000}, {x:2000,y:0}] },
   { id: 'u', name: 'П-подібний', points: [{x:-2500,y:0}, {x:-2500,y:4000}, {x:-1000,y:4000}, {x:-1000,y:2000}, {x:1000,y:2000}, {x:1000,y:4000}, {x:2500,y:4000}, {x:2500,y:0}] },
   { id: 't', name: 'Т-подібний', points: [{x:-500,y:4000}, {x:500,y:4000}, {x:500,y:2500}, {x:2500,y:2500}, {x:2500,y:1500}, {x:500,y:1500}, {x:500,y:0}, {x:-500,y:0}] },
-  { id: 'z', name: 'Z-подібний', points: [{x:-2500,y:2500}, {x:0,y:2500}, {x:0,y:4000}, {x:2500,y:4000}, {x:2500,y:1500}, {x:0,y:1500}, {x:0,y:0}, {x:-2500,y:0}] },
-  { id: 'rhomb', name: 'Ромб', points: [{x:0,y:0}, {x:1500,y:2500}, {x:0,y:5000}, {x:-1500,y:2500}] },
 ];
 
 // --- Components ---
@@ -163,6 +161,7 @@ export default function App() {
   const [selectedVertex, setSelectedVertex] = useState<{ polyIndex: number, vertIndex: number } | null>(null); 
   const [isEditingHeight, setIsEditingHeight] = useState(false);
   const [manualLength, setManualLength] = useState<string>("");
+  const [lockedEdgePoint, setLockedEdgePoint] = useState<'p1' | 'p2'>('p1');
   const [isAddingGuide, setIsAddingGuide] = useState(false);
   const [newGuideX, setNewGuideX] = useState<string>("");
   const [selectedGuideIndex, setSelectedGuideIndex] = useState<number | null>(null);
@@ -180,7 +179,7 @@ export default function App() {
 
   // Refs
   const containerRef = useRef<HTMLDivElement>(null);
-  const canvasRef = useRef<HTMLDivElement>(null);
+  const canvasRef = useRef<SVGGElement>(null);
   const transform = useRef({ x: 0, y: 0, scale: 0.05 });
   const chatEndRef = useRef<HTMLDivElement>(null);
   const isDragging = useRef(false);
@@ -277,12 +276,34 @@ export default function App() {
         const sheetsSvg = slope.sheets.map(sheet => {
             const pos = toSvg({x: sheet.x, y: sheet.y + sheet.length});
             const strokeW = isSiding ? 2 : 5;
-            const fontSize = isSiding ? sheet.length * 0.35 : Math.max(120, sheet.width/8);
-            const textY = sheet.length/2 + (isSiding ? sheet.length * 0.12 : 0);
+            
+            // Logic for text inside PDF (SVG)
+            // Use same logic as display: vertical for non-siding
+            const cx = sheet.width / 2;
+            const cy = sheet.length / 2;
+            const rotate = !isSiding ? -90 : 0;
+            
+            let fontSize = 150;
+            if (isSiding) {
+                fontSize = sheet.length * 0.4;
+            } else if (isPicket) {
+                fontSize = Math.min(sheet.length * 0.4, 140);
+            } else {
+                fontSize = Math.min(sheet.length * 0.3, sheet.width * 0.25);
+                if (fontSize < 150) fontSize = 150;
+            }
+            const labelText = sheet.label.toString();
+
             return `
                 <g transform="translate(${pos.x}, ${pos.y})">
                     <rect width="${sheet.width}" height="${sheet.length}" fill="${sheet.color}" fill-opacity="0.15" stroke="#EF4444" stroke-width="${strokeW}" stroke-dasharray="20,10" />
-                    <text x="${sheet.width/2}" y="${textY}" fill="#991B1B" font-size="${fontSize}" text-anchor="middle" font-weight="bold" font-family="sans-serif">${sheet.label}</text>
+                    
+                    <g transform="translate(${cx}, ${cy}) rotate(${rotate})">
+                         <!-- Outline -->
+                         <text x="0" y="0" text-anchor="middle" dominant-baseline="central" fill="none" stroke="white" stroke-width="${fontSize * 0.1}" font-size="${fontSize}" font-weight="bold" font-family="sans-serif">${labelText}</text>
+                         <!-- Text -->
+                         <text x="0" y="0" text-anchor="middle" dominant-baseline="central" fill="#991B1B" font-size="${fontSize}" font-weight="bold" font-family="sans-serif">${labelText}</text>
+                    </g>
                 </g>
             `;
         }).join('');
@@ -620,7 +641,7 @@ export default function App() {
     
     if (isAddingGuide && type === 'bg') {
         // Add vertical guide immediately on click
-        const rect = canvasRef.current?.getBoundingClientRect();
+        const rect = containerRef.current?.getBoundingClientRect();
         if (rect) {
             const scale = transform.current.scale;
             const svgX = (x - rect.left) / scale - transform.current.x / scale;
@@ -745,7 +766,7 @@ export default function App() {
     setLayoutOffset(prev => ({ x: prev.x + dx, y: prev.y + dy }));
   };
 
-  const updateEdgeLength = (newLength: number) => {
+  const updateEdgeLength = (newLength: number, lockedPoint: 'p1' | 'p2') => {
     if (selectedEdge === null) return;
     const { polyIndex, vertIndex } = selectedEdge;
     
@@ -762,25 +783,12 @@ export default function App() {
         const ratio = newLength / currentLen;
         const newPoints = [...points];
 
-        if (polyIndex === -1 && points.length === 4) {
-             if (p2.y < p1.y) { 
-                 const dx = p1.x - p2.x; const dy = p1.y - p2.y;
-                 newPoints[i1] = { x: p2.x + dx * ratio, y: p2.y + dy * ratio };
-             } else {
-                 const dx = p2.x - p1.x; const dy = p2.y - p1.y;
-                 newPoints[i2] = { x: p1.x + dx * ratio, y: p1.y + dy * ratio };
-             }
-             return newPoints;
-        }
-
-        if (p2.y < p1.y) { 
-             const dx = p1.x - p2.x;
-             const dy = p1.y - p2.y;
-             newPoints[i1] = { x: p2.x + dx * ratio, y: p2.y + dy * ratio };
+        if (lockedPoint === 'p1') {
+            // Точка 1 зафіксована, рухаємо Точку 2
+            newPoints[i2] = { x: p1.x + dx * ratio, y: p1.y + dy * ratio };
         } else {
-             const dx = p2.x - p1.x;
-             const dy = p2.y - p1.y;
-             newPoints[i2] = { x: p1.x + dx * ratio, y: p1.y + dy * ratio };
+            // Точка 2 зафіксована, рухаємо Точку 1 у протилежному напрямку
+            newPoints[i1] = { x: p2.x - dx * ratio, y: p2.y - dy * ratio };
         }
         return newPoints;
     };
@@ -987,7 +995,14 @@ export default function App() {
         // PICKET CALCULATION HELPERS
         const slopeWidth = maxX - minX;
         const centerX = minX + slopeWidth / 2;
-        const halfWidth = slopeWidth / 2; // Maximum distance from center
+        // Точно визначаємо індекси ПЕРШОГО і ОСТАННЬОГО фактично видимого штахетника
+        const actualStartK = Math.floor((minX - gridOriginX) / material.effectiveWidth);
+        const actualEndK = Math.ceil((maxX - gridOriginX) / material.effectiveWidth) - 1;
+        const totalPickets = Math.max(1, actualEndK - actualStartK + 1);
+        // Розраховуємо центр САМЕ паркану (а не креслення)
+        const realFenceWidth = totalPickets * material.effectiveWidth;
+        const realStartX = gridOriginX + actualStartK * material.effectiveWidth;
+        const realCenterX = realStartX + realFenceWidth / 2;
 
         for (let i = startK; i <= endK; i++) {
            const stripLeft = gridOriginX + i * material.effectiveWidth;
@@ -1050,20 +1065,25 @@ export default function App() {
                         let picketH = peakHeight; // Default to peak
 
                         if (material.picketProfile && material.picketProfile !== 'straight') {
-                            const dist = Math.abs(stripCenter - centerX); // Distance from center
-                            const archH = material.archHeight || 0;
-                            // Parabola coefficient: k = deltaH / (maxDist^2)
-                            const k = halfWidth > 0 ? archH / (halfWidth * halfWidth) : 0;
+                            const dist = Math.abs(stripCenter - realCenterX); // Відстань від центру
+                            const W = realFenceWidth; // Ширина всієї секції
+                            const H = material.archHeight || 0; // Глибина арки
                             
-                            if (material.picketProfile === 'convex') {
-                                // Hill: H(x) = H_max - k * x^2
-                                // Center is highest
-                                picketH = peakHeight - k * dist * dist;
-                            } else if (material.picketProfile === 'concave') {
-                                // Valley: H(x) = H_min + k * x^2
-                                // Center is lowest (H_min = H_max - archH)
-                                const hMin = peakHeight - archH;
-                                picketH = hMin + k * dist * dist;
+                            if (H > 0 && W > 0) {
+                                // Розрахунок радіуса кола: R = H/2 + W^2 / 8H
+                                const R = (H / 2) + ((W * W) / (8 * H));
+                                const safeDist = Math.min(dist, R); // Запобіжник
+                                
+                                // Висота точки на колі
+                                const arcOffset = Math.sqrt(R * R - safeDist * safeDist) - (R - H);
+                                
+                                if (material.picketProfile === 'convex') {
+                                    // Опукла (гірка): центр найвищий
+                                    picketH = (peakHeight - H) + arcOffset;
+                                } else if (material.picketProfile === 'concave') {
+                                    // Увігнута (сідло): центр найнижчий
+                                    picketH = peakHeight - arcOffset;
+                                }
                             }
                         }
 
@@ -1133,6 +1153,36 @@ export default function App() {
           calculateLayout();
       }
   }, [layoutOffset, step, activeSlopeId, verticalGuides]); 
+
+  const rotateShape = (direction: 'cw' | 'ccw') => {
+      const allPoints = [...vertices, ...holes.flat()];
+      if (allPoints.length === 0) return;
+
+      const minX = Math.min(...allPoints.map(p => p.x));
+      const maxX = Math.max(...allPoints.map(p => p.x));
+      const minY = Math.min(...allPoints.map(p => p.y));
+      const maxY = Math.max(...allPoints.map(p => p.y));
+      
+      const cx = (minX + maxX) / 2;
+      const cy = (minY + maxY) / 2;
+
+      const rotatePoint = (p: Point) => {
+          const px = p.x - cx;
+          const py = p.y - cy;
+          if (direction === 'cw') {
+              // 90 градусів за годинниковою
+              return { x: cx + py, y: cy - px };
+          } else {
+              // 90 градусів проти годинникової
+              return { x: cx - py, y: cy + px };
+          }
+      };
+
+      setVertices(prev => prev.map(rotatePoint));
+      setHoles(prev => prev.map(hole => hole.map(rotatePoint)));
+      setVerticalGuides([]); // Скидаємо вертикальні направляючі, оскільки вони втрачають актуальність
+      setTimeout(fitView, 50);
+  };
 
   const applyTemplate = (points: Point[]) => {
       setVertices(points);
@@ -1418,12 +1468,31 @@ export default function App() {
              </div>
              
              <div className="overflow-y-auto p-4 grid grid-cols-2 sm:grid-cols-3 gap-4">
-                {ROOF_TEMPLATES.map(tmpl => (
-                    <button key={tmpl.id} onClick={() => applyTemplate(tmpl.points)} className="flex flex-col items-center gap-2 p-3 border rounded-xl hover:border-blue-500 hover:bg-blue-50 transition">
-                        <div className="w-24 h-24 bg-white border rounded flex items-center justify-center"><LayoutTemplate size={32} className="text-gray-300"/></div>
-                        <span className="text-xs font-bold text-center">{tmpl.name}</span>
-                    </button>
-                ))}
+                {ROOF_TEMPLATES.map(tmpl => {
+                    // Розраховуємо SVG viewBox для правильного масштабування фігури в мініатюрі
+                    const mapped = tmpl.points.map(p => ({ x: p.x, y: -p.y }));
+                    const minX = Math.min(...mapped.map(p => p.x));
+                    const maxX = Math.max(...mapped.map(p => p.x));
+                    const minY = Math.min(...mapped.map(p => p.y));
+                    const maxY = Math.max(...mapped.map(p => p.y));
+                    const w = maxX - minX;
+                    const h = maxY - minY;
+                    const padX = w * 0.15 || 500;
+                    const padY = h * 0.15 || 500;
+                    const vb = `${minX - padX} ${minY - padY} ${w + padX * 2} ${h + padY * 2}`;
+                    const pathD = `M ${mapped.map(p => `${p.x} ${p.y}`).join(' L ')} Z`;
+                    
+                    return (
+                        <button key={tmpl.id} onClick={() => applyTemplate(tmpl.points)} className="flex flex-col items-center gap-2 p-3 border rounded-xl hover:border-blue-500 hover:bg-blue-50 transition group">
+                            <div className="w-24 h-24 bg-white border rounded-lg flex items-center justify-center p-2 group-hover:shadow-sm transition">
+                                <svg viewBox={vb} className="w-full h-full text-blue-500 fill-blue-50 stroke-current drop-shadow-sm" style={{ strokeWidth: Math.max(w,h)*0.04, strokeLinejoin: 'round' }}>
+                                    <path d={pathD} />
+                                </svg>
+                            </div>
+                            <span className="text-xs font-bold text-center text-gray-700 group-hover:text-blue-700">{tmpl.name}</span>
+                        </button>
+                    );
+                })}
              </div>
           </div>
         </div>
@@ -1692,14 +1761,14 @@ export default function App() {
                </button>
             </div>
 
-            <div ref={canvasRef} style={{ transformOrigin: '0 0', willChange: 'transform' }}>
-              <svg style={{ overflow: 'visible' }}>
-                  <defs>
-                      <GridBackground />
-                      <clipPath id="slope-clip">
-                          <path d={slopePath} clipRule="evenodd" />
-                      </clipPath>
-                  </defs>
+            <svg className="absolute inset-0 w-full h-full" style={{ overflow: 'visible' }}>
+              <defs>
+                  <GridBackground />
+                  <clipPath id="slope-clip">
+                      <path d={slopePath} clipRule="evenodd" />
+                  </clipPath>
+              </defs>
+              <g ref={canvasRef} style={{ transformOrigin: '0 0', willChange: 'transform' }}>
                   <rect x="-10000" y="-10000" width="20000" height="20000" fill="url(#grid)" />
                   
                   {/* --- AXES (Visual Guides) --- */}
@@ -1716,13 +1785,29 @@ export default function App() {
                   {/* REMOVED CLIP PATH: Sheets now display as full rectangles overlapping the roof shape */}
                   <g>
                     {step === 'layout' && sheets.map(sheet => {
-                        // FIX: Аналогічне виправлення для відображення на екрані
                         const svgPos = toSvg({x: sheet.x, y: sheet.y + sheet.length});
                         const isSiding = material.type === 'siding';
-                        // Siding specific visual adjustments
+                        const isPicket = material.type === 'picket';
                         const strokeW = selectedSheetId === sheet.id ? 25 : (isSiding ? 2 : 5);
-                        const fontSize = isSiding ? sheet.length * 0.35 : Math.max(120, sheet.width/8);
-                        const textY = sheet.length/2 + (isSiding ? sheet.length * 0.12 : 0);
+                        
+                        // Text Configuration
+                        const rotateText = !isSiding; // Rotate for everything except Siding
+                        const cx = sheet.width / 2;
+                        const cy = sheet.length / 2;
+
+                        // Font Size Calculation
+                        let fontSize = 150;
+                        if (isSiding) {
+                            fontSize = sheet.length * 0.4;
+                        } else if (isPicket) {
+                            fontSize = Math.min(sheet.length * 0.4, 140); // Max 140 for picket to fit width visually
+                        } else {
+                            // Tile/Profile
+                            fontSize = Math.min(sheet.length * 0.3, sheet.width * 0.25);
+                            if (fontSize < 150) fontSize = 150; // Min legible size
+                        }
+
+                        const labelText = sheet.label.toString();
 
                         return (
                             <g key={sheet.id} transform={`translate(${svgPos.x}, ${svgPos.y})`}
@@ -1732,22 +1817,39 @@ export default function App() {
                                 width={sheet.width} 
                                 height={sheet.length} 
                                 fill={sheet.color} 
-                                fillOpacity={0.15}
+                                fillOpacity={0.2} // Increased opacity slightly for visibility
                                 stroke={selectedSheetId === sheet.id ? '#F97316' : '#EF4444'} 
                                 strokeWidth={strokeW} 
                                 strokeDasharray={selectedSheetId === sheet.id ? 'none' : '20,10'}
                               />
-                              <text 
-                                x={sheet.width/2} 
-                                y={textY} 
-                                fill={selectedSheetId === sheet.id ? '#F97316' : '#991B1B'}
-                                fontSize={fontSize} 
-                                textAnchor="middle" 
-                                fontWeight="bold" 
-                                className="pointer-events-none"
-                              >
-                                {sheet.label}
-                              </text>
+                              
+                              {/* Centered Text Group */}
+                              <g transform={`translate(${cx}, ${cy}) rotate(${rotateText ? -90 : 0})`}>
+                                  {/* Outline for contrast */}
+                                  <text 
+                                    textAnchor="middle" 
+                                    dominantBaseline="central"
+                                    fontSize={fontSize}
+                                    fontWeight="bold"
+                                    stroke="white"
+                                    strokeWidth={fontSize * 0.1}
+                                    fill="none"
+                                    className="pointer-events-none"
+                                  >
+                                    {labelText}
+                                  </text>
+                                  {/* Main Text */}
+                                  <text 
+                                    textAnchor="middle" 
+                                    dominantBaseline="central"
+                                    fontSize={fontSize}
+                                    fontWeight="bold"
+                                    fill={selectedSheetId === sheet.id ? '#C2410C' : '#7F1D1D'}
+                                    className="pointer-events-none"
+                                  >
+                                    {labelText}
+                                  </text>
+                              </g>
                             </g>
                         )
                     })}
@@ -1989,8 +2091,8 @@ export default function App() {
                         )
                       })
                   ))}
-              </svg>
-            </div>
+              </g>
+            </svg>
           </div>
       </main>
 
@@ -2051,10 +2153,18 @@ export default function App() {
             ) : selectedEdge !== null ? (
                // EDGE EDIT MODE
                <div className="flex w-full gap-2 items-center px-2">
-                  <div className="flex-1">
-                     <label className="text-[10px] text-blue-600 font-bold uppercase ml-1 block flex items-center gap-1">
-                        <Ruler size={10}/> Редагування сторони
-                     </label>
+                  <div className="flex-1 flex flex-col gap-1">
+                     <div className="flex items-center justify-between">
+                         <label className="text-[10px] text-blue-600 font-bold uppercase ml-1 flex items-center gap-1">
+                            <Ruler size={10}/> Сторона
+                         </label>
+                         <button 
+                            onClick={() => setLockedEdgePoint(prev => prev === 'p1' ? 'p2' : 'p1')}
+                            className="px-2 py-0.5 bg-blue-100 text-blue-700 rounded text-[10px] font-bold active:bg-blue-200 transition"
+                         >
+                            🔒 Фікс: {lockedEdgePoint === 'p1' ? 'Точка 1' : 'Точка 2'}
+                         </button>
+                     </div>
                      <input 
                        type="number" 
                        autoFocus
@@ -2065,7 +2175,7 @@ export default function App() {
                            setManualLength(val);
                            const num = Number(val);
                            if (!isNaN(num) && num > 0) {
-                               updateEdgeLength(num);
+                               updateEdgeLength(num, lockedEdgePoint);
                            }
                        }}
                      />
@@ -2152,8 +2262,16 @@ export default function App() {
                       <LayoutTemplate size={16} className="text-gray-600"/>
                       Шаблони
                   </button>
-                  <div className="h-6 w-px bg-gray-300 mx-1"></div>
+                  <div className="h-6 w-px bg-gray-300 mx-1 shrink-0"></div>
                   
+                  <button onClick={() => rotateShape('ccw')} className="px-3 py-2 bg-gray-100 rounded text-xs font-bold whitespace-nowrap border border-gray-200 flex items-center gap-1 hover:bg-gray-200" title="Повернути вліво">
+                      <RotateCcw size={16} className="text-gray-600"/>
+                  </button>
+                  <button onClick={() => rotateShape('cw')} className="px-3 py-2 bg-gray-100 rounded text-xs font-bold whitespace-nowrap border border-gray-200 flex items-center gap-1 hover:bg-gray-200" title="Повернути вправо">
+                      <RotateCw size={16} className="text-gray-600"/>
+                  </button>
+                  <div className="h-6 w-px bg-gray-300 mx-1 shrink-0"></div>
+
                   <button onClick={() => setIsAddingGuide(true)} className={`flex-1 px-3 py-2 border rounded text-xs font-bold flex justify-center gap-1 whitespace-nowrap transition ${isAddingGuide ? 'bg-indigo-600 text-white border-indigo-700 shadow-inner' : 'bg-indigo-50 text-indigo-700 border-indigo-100 hover:bg-indigo-100'}`}>
                       <Split size={16}/> {isAddingGuide ? 'Вкажіть лінію' : 'Розділювач'}
                   </button>
