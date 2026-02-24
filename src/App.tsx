@@ -413,9 +413,10 @@ export default function App() {
       </head>
       <body>
         <!-- Mobile Friendly Controls -->
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
         <div class="print-controls no-print">
-            <button class="btn btn-close" onclick="window.close()">✕ Закрити</button>
-            <button class="btn" onclick="window.print()">🖨️ Зберегти PDF</button>
+            <button class="btn btn-close" onclick="if(window.history.length > 1){ window.history.back(); } else { window.close(); }">✕ Закрити</button>
+            <button class="btn" onclick="var c=document.querySelector('.print-controls'); c.style.display='none'; html2pdf().set({margin:5, filename:'RoofMaster_Spec.pdf', html2canvas:{scale:2}, jsPDF:{unit:'mm',format:'a4',orientation:'portrait'}}).from(document.body).save().then(function(){c.style.display='flex';});">🖨️ Зберегти PDF</button>
         </div>
 
         <div class="header">
@@ -482,10 +483,6 @@ export default function App() {
 
         ${slopeSections}
 
-        <script>
-          // Try auto-print with delay, but provide manual button if it fails
-          window.onload = () => { setTimeout(() => { try { window.print(); } catch(e){} }, 800); };
-        </script>
       </body>
       </html>
     `;
