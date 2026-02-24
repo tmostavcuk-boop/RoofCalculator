@@ -190,9 +190,41 @@ export default function App() {
 
   // Handle messages from the iframe
   useEffect(() => {
-    const handleMessage = (e: MessageEvent) => {
+    const handleMessage = async (e: MessageEvent) => {
       if (e.data === 'closePreview') {
         setPreviewHtml(null);
+      } else if (e.data && e.data.type === 'PDF_GENERATED') {
+        try {
+          const base64Str = e.data.data;
+          // Перетворюємо Base64 назад у File
+          const arr = base64Str.split(',');
+          // eslint-disable-next-line
+          const mime = arr[0].match(/:(.*?);/)?.[1] || 'application/pdf';
+          const bstr = atob(arr[1]);
+          let n = bstr.length;
+          const u8arr = new Uint8Array(n);
+          while(n--){ u8arr[n] = bstr.charCodeAt(n); }
+          const blob = new Blob([u8arr], {type: mime});
+          const file = new File([blob], 'RoofMaster_Spec.pdf', { type: 'application/pdf' });
+          
+          // Викликаємо Share API з головного вікна, де є права
+          if (navigator.canShare && navigator.canShare({ files: [file] })) {
+            await navigator.share({
+              files: [file],
+              title: 'Специфікація Roof Master'
+            });
+          } else {
+            throw new Error('Share unsupported');
+          }
+        } catch (err) {
+          // Надійний fallback для Android WebView
+          const a = document.createElement('a');
+          a.href = e.data.data; // Віддаємо прямий Base64 файл
+          a.download = 'RoofMaster_Spec.pdf';
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+        }
       }
     };
     window.addEventListener('message', handleMessage);
@@ -424,7 +456,7 @@ export default function App() {
       <body>
         <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
         <div class="print-controls no-print">
-            <button class="btn btn-close" onclick="window.parent.postMessage('closePreview', '*'); if(window.history.length > 1){ window.history.back(); } else { window.close(); }">✕ Закрити</button>
+            <button class="btn btn-close" onclick="window.parent.postMessage('closePreview', '*');">✕ Закрити</button>
             <button class="btn" onclick="sharePDF()" id="pdfBtn">🖨️ Поділитися / Зберегти PDF</button>
         </div>
         <script>
@@ -440,34 +472,17 @@ export default function App() {
                 html2canvas: { scale: 2 },
                 jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
             };
-            html2pdf().set(opt).from(document.body).output('blob').then(function(blob) {
+            // Зберігаємо як Base64 рядок
+            html2pdf().set(opt).from(document.body).output('datauristring').then(function(pdfBase64) {
                 controls.style.display = 'flex';
                 btn.innerHTML = originalText;
-                var file = new File([blob], 'RoofMaster_Spec.pdf', { type: 'application/pdf' });
-                if (navigator.canShare && navigator.canShare({ files: [file] })) {
-                    navigator.share({
-                        files: [file],
-                        title: 'Специфікація Roof Master'
-                    }).catch(function(err) {
-                        fallback(blob);
-                    });
-                } else {
-                    fallback(blob);
-                }
+                // Відправляємо згенерований PDF у головне вікно React
+                window.parent.postMessage({ type: 'PDF_GENERATED', data: pdfBase64 }, '*');
             }).catch(function(e) {
                 controls.style.display = 'flex';
                 btn.innerHTML = originalText;
                 alert('Помилка генерації: ' + e);
             });
-        }
-        function fallback(blob) {
-            var url = URL.createObjectURL(blob);
-            var a = document.createElement('a');
-            a.href = url;
-            a.download = 'RoofMaster_Spec.pdf';
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
         }
         </script>
 
