@@ -1380,7 +1380,7 @@ export default function App() {
   // --- RENDER ---
   if (step === 'material') {
     return (
-      <div className="w-full h-screen bg-gray-50 flex flex-col overflow-hidden">
+      <div className="w-full h-[100dvh] bg-gray-50 flex flex-col overflow-hidden">
         <div className="bg-blue-600 p-6 text-white text-center shrink-0">
             <LayoutGrid size={48} className="mx-auto mb-2 opacity-90"/>
             <h1 className="text-2xl font-bold">Roof Master</h1>
@@ -1510,7 +1510,7 @@ export default function App() {
 
   // ... (The rest of the render block remains the same as previous) ...
   return (
-    <div className="flex flex-col h-screen w-full bg-gray-100 text-gray-800 font-sans select-none overflow-hidden relative">
+    <div className="flex flex-col h-[100dvh] w-full bg-gray-100 text-gray-800 font-sans select-none overflow-hidden relative">
       
       {/* TEMPLATE MODAL */}
       {showTemplates && (
@@ -2154,7 +2154,7 @@ export default function App() {
       </main>
 
       {/* FOOTER */}
-      <div className="flex-none bg-white border-t z-50 p-2 pb-safe min-h-[70px] flex items-center relative">
+      <div className="flex-none bg-white border-t z-50 p-2 pb-8 sm:pb-2 min-h-[90px] flex items-center relative">
          {step === 'geometry' ? (
             isAddingGuide ? (
                 // ADD GUIDE MODE (Manual Input)
