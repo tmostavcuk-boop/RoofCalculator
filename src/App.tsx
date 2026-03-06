@@ -405,71 +405,112 @@ export default function App() {
     let slopeSections = slopes.map((s, idx) => {
         const svg = generateSlopeSvg(s);
         const groups = getSheetGroups(s.sheets);
+        
         const sArea = getPolyArea(s.vertices) - s.holes.reduce((acc, h) => acc + getPolyArea(h), 0);
+        const sSheetsArea = s.sheets.reduce((acc, sh) => acc + (sh.width * sh.length / 1000000), 0);
+        
+        // ВРАХУВАННЯ НАХЛЕСТІВ ДЛЯ КОРИСНОЇ ПЛОЩІ: 
+        // корисна ширина * корисна довжина (без ділянок, які йдуть на нахлест)
+        const sUsefulArea = s.sheets.reduce((acc, sh) => {
+            if (material.type === 'siding') {
+                return acc + (sh.width * material.effectiveWidth) / 1000000;
+            } else if (material.type === 'picket') {
+                return acc + (sh.width * sh.length) / 1000000;
+            } else {
+                // Металочерепиця або Профнастил
+                const parts = sh.id.split('-');
+                const colId = parts[1];
+                const rowId = parseInt(parts[2], 10);
+                
+                // Перевіряємо, чи є лист вище в цьому ж стовпці (тоді поточний лист втрачає довжину на нахлест)
+                const hasSheetAbove = s.sheets.some(other => {
+                    const oParts = other.id.split('-');
+                    return oParts[1] === colId && parseInt(oParts[2], 10) === rowId + 1;
+                });
+                
+                const effectiveLen = hasSheetAbove ? (sh.length - (material.overlap || 0)) : sh.length;
+                return acc + (material.effectiveWidth * effectiveLen) / 1000000;
+            }
+        }, 0);
+
+        const sWaste = sSheetsArea > 0 ? ((sSheetsArea - sArea) / sSheetsArea * 100) : 0;
+        const sCount = s.sheets.length;
         
         return `
-        <div class="page-break">
-            <div class="section-title">${s.name} (Площа: ${sArea.toFixed(2)} м²)</div>
-            <div class="svg-container">${svg}</div>
-            <table>
-                <thead>
-                    <tr><th>№</th><th>${isPicket ? 'Довжина (см)' : 'Довжина (мм)'}</th><th>Кількість (шт)</th><th>Метраж (м.п.)</th></tr>
-                </thead>
-                <tbody>
-                    ${groups.map(([len, count], i) => `
-                        <tr>
-                            <td>${i + 1}</td><td><strong>${isPicket ? Math.round(Number(len)/10) : len}</strong></td><td>${count}</td>
-                            <td>${((Number(len) * count) / 1000).toFixed(2)}</td>
-                        </tr>
-                    `).join('')}
-                </tbody>
-            </table>
+        <div class="page-break" style="margin-bottom: 50px;">
+            <div class="section-title" style="font-size: 20px; font-weight: bold; margin-bottom: 20px; color: #1F2937; border-bottom: 2px solid #2563EB; padding-bottom: 8px;">
+                Схил: ${s.name}
+            </div>
+            
+            <ul style="list-style: none; padding: 0; margin: 0 0 20px 0; font-size: 16px; background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; padding: 15px;">
+                <li style="padding: 6px 0; border-bottom: 1px dashed #CBD5E1; display: flex; justify-content: space-between;">
+                    <span style="color: #475569;">Площа схилу:</span>
+                    <strong>${sArea.toFixed(2)} м²</strong>
+                </li>
+                <li style="padding: 6px 0; border-bottom: 1px dashed #CBD5E1; display: flex; justify-content: space-between;">
+                    <span style="color: #475569;">Площа листів:</span>
+                    <strong>${sSheetsArea.toFixed(2)} м²</strong>
+                </li>
+                <li style="padding: 6px 0; border-bottom: 1px dashed #CBD5E1; display: flex; justify-content: space-between;">
+                    <span style="color: #475569;">Площа листів корисна:</span>
+                    <strong style="color: #16A34A;">${sUsefulArea.toFixed(2)} м²</strong>
+                </li>
+                <li style="padding: 6px 0; border-bottom: 1px dashed #CBD5E1; display: flex; justify-content: space-between;">
+                    <span style="color: #475569;">Відходи в відсотках:</span>
+                    <strong style="color: #DC2626;">${sWaste.toFixed(2)} %</strong>
+                </li>
+                <li style="padding: 6px 0; display: flex; justify-content: space-between;">
+                    <span style="color: #475569;">Кількість листів:</span>
+                    <strong style="color: #2563EB;">${sCount} шт</strong>
+                </li>
+            </ul>
+
+            <div class="svg-container" style="border: 2px dashed #CBD5E1; border-radius: 8px; padding: 10px; background: white; margin-bottom: 25px;">
+                ${svg}
+            </div>
+            
+            <div class="vertical-sheets">
+                <div style="font-size: 18px; font-weight: bold; margin-bottom: 15px; border-left: 4px solid #2563EB; padding-left: 10px; color: #1E293B;">
+                    Специфікація листів (Розміри):
+                </div>
+                ${groups.length === 0 ? '<p style="color:#64748B;">Немає листів</p>' : ''}
+                ${groups.map(([len, count], i) => `
+                    <div style="display: flex; background: #F1F5F9; margin-bottom: 8px; padding: 12px 15px; border: 1px solid #E2E8F0; border-radius: 6px; align-items: center;">
+                        <div style="width: 45px; font-weight: bold; color: #64748B; font-size: 14px;"># ${i + 1}</div>
+                        <div style="flex: 1; font-size: 16px; color: #334155;">
+                            Розмір: <strong style="font-size: 18px; color: #0F172A;">${isPicket ? Math.round(Number(len)/10) + ' см' : len + ' мм'}</strong>
+                        </div>
+                        <div style="width: 140px; text-align: right; font-size: 15px; color: #475569;">
+                            Кількість: <strong style="color: #2563EB; font-size: 18px;">${count} шт</strong>
+                        </div>
+                    </div>
+                `).join('')}
+            </div>
         </div>`;
     }).join('');
 
-    const globalGroups: Record<number, number> = {};
-    slopes.forEach(s => {
-        s.sheets.forEach(sh => {
-            globalGroups[sh.label] = (globalGroups[sh.label] || 0) + 1;
-        });
-    });
-    const sortedGlobal = Object.entries(globalGroups).sort((a,b) => Number(b[0]) - Number(a[0]));
-    
     const htmlContent = `
       <!DOCTYPE html>
       <html lang="uk">
       <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Карта Розкрою - ${material.name}</title>
+        <title>Специфікація - ${material.name}</title>
         <style>
-          body { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; padding: 20px; color: #1f2937; max-width: 100%; overflow-x: hidden; }
-          .header { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 2px solid #2563EB; padding-bottom: 20px; margin-bottom: 30px; }
-          h1 { margin: 0; color: #111827; font-size: 24px; }
-          .sub-title { color: #6B7280; margin: 5px 0 0 0; font-size: 14px; }
-          .meta-box { text-align: right; font-size: 14px; color: #4B5563; }
-          .grid-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 15px; margin-bottom: 30px; }
-          @media (max-width: 600px) {
-             .grid-stats { grid-template-columns: repeat(2, 1fr); }
-             .header { flex-direction: column; gap: 10px; }
-             .meta-box { text-align: left; }
-          }
-          .stat-card { background: #F3F4F6; padding: 15px; border-radius: 8px; text-align: center; border: 1px solid #E5E7EB; }
-          .stat-label { display: block; font-size: 11px; color: #6B7280; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 5px; font-weight: 600; }
-          .stat-value { font-size: 18px; font-weight: 700; color: #111827; }
-          .section-title { font-size: 16px; font-weight: 700; margin: 30px 0 15px 0; border-left: 4px solid #2563EB; padding-left: 10px; color: #1F2937; page-break-after: avoid; }
-          .svg-container { width: 100%; height: 350px; border: 1px solid #E5E7EB; margin-bottom: 20px; display: flex; justify-content: center; align-items: center; border-radius: 8px; overflow: hidden; background: white; page-break-inside: avoid; }
-          table { width: 100%; border-collapse: collapse; font-size: 14px; margin-bottom: 20px; page-break-inside: avoid; }
-          th { background: #F9FAFB; color: #374151; font-weight: 600; text-align: left; padding: 10px; border-bottom: 2px solid #E5E7EB; }
-          td { padding: 8px 10px; border-bottom: 1px solid #E5E7EB; color: #4B5563; }
-          .total-row td { background: #EEF2FF; font-weight: 700; color: #1E40AF; border-top: 2px solid #2563EB; }
-          .page-break { page-break-inside: avoid; margin-bottom: 40px; }
+          body { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; padding: 25px; color: #1f2937; max-width: 100%; overflow-x: hidden; background: #fff;}
+          .header { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 3px solid #1E3A8A; padding-bottom: 20px; margin-bottom: 30px; }
+          h1 { margin: 0; color: #111827; font-size: 28px; }
+          .sub-title { color: #6B7280; margin: 5px 0 0 0; font-size: 16px; }
+          .meta-box { text-align: right; font-size: 15px; color: #4B5563; }
+          .svg-container { width: 100%; height: 400px; display: flex; justify-content: center; align-items: center; overflow: hidden; page-break-inside: avoid; }
+          
+          .page-break { page-break-inside: avoid; }
           
           /* Mobile specific styles for Print Controls */
           @media print {
             body { padding: 0; }
             .no-print { display: none !important; }
-            .page-break { page-break-inside: avoid; margin-bottom: 20px; }
+            .page-break { page-break-inside: avoid; margin-bottom: 20px !important; }
           }
           .print-controls {
             position: fixed; bottom: 20px; right: 20px; display: flex; gap: 10px; z-index: 50;
@@ -488,7 +529,7 @@ export default function App() {
         <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
         <div class="print-controls no-print">
             <button class="btn btn-close" onclick="window.parent.postMessage('closePreview', '*');">✕ Закрити</button>
-            <button class="btn" onclick="sharePDF()" id="pdfBtn">🖨️ Поділитися / Зберегти PDF</button>
+            <button class="btn" onclick="sharePDF()" id="pdfBtn">🖨️ Зберегти PDF</button>
         </div>
         <script>
         function sharePDF() {
@@ -498,7 +539,7 @@ export default function App() {
             var controls = document.querySelector('.print-controls');
             controls.style.display = 'none';
             var opt = {
-                margin: 5,
+                margin: 10,
                 filename: 'RoofMaster_Spec.pdf',
                 html2canvas: { scale: 2 },
                 jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
@@ -517,65 +558,17 @@ export default function App() {
 
         <div class="header">
           <div>
-            <h1>Специфікація Покрівлі</h1>
+            <h1>Детальна Специфікація</h1>
             <p class="sub-title">Згенеровано Roof Master Pro</p>
           </div>
           <div class="meta-box">
             <div><strong>Дата:</strong> ${date}</div>
             <div><strong>Матеріал:</strong> ${material.name}</div>
-            <div style="font-size: 12px; color: #9CA3AF; margin-top:2px;">
-              ${material.totalWidth}мм / ${material.effectiveWidth}мм
+            <div style="font-size: 13px; color: #9CA3AF; margin-top:4px;">
+              Габарити: ${material.totalWidth} мм / ${material.effectiveWidth} мм
             </div>
           </div>
         </div>
-
-        <div class="grid-stats">
-          <div class="stat-card">
-            <span class="stat-label">Загальна площа</span>
-            <span class="stat-value">${totalProjectStats.totalArea.toFixed(2)} м²</span>
-          </div>
-          <div class="stat-card">
-            <span class="stat-label">Площа листів</span>
-            <span class="stat-value">${totalProjectStats.totalSheetsArea.toFixed(2)} м²</span>
-          </div>
-          <div class="stat-card">
-            <span class="stat-label">К-сть листів</span>
-            <span class="stat-value">${totalProjectStats.totalSheetsCount} шт</span>
-          </div>
-          <div class="stat-card">
-            <span class="stat-label">Відходи</span>
-            <span class="stat-value" style="color: ${totalProjectStats.totalWaste > 15 ? '#DC2626' : '#059669'}">${totalProjectStats.totalWaste.toFixed(1)}%</span>
-          </div>
-        </div>
-
-        <div class="section-title">ЗВЕДЕНА СПЕЦИФІКАЦІЯ (ВСІ СХИЛИ)</div>
-        <table>
-            <thead>
-            <tr>
-              <th>№</th>
-              <th>${isPicket ? 'Довжина (см)' : 'Довжина (мм)'}</th>
-              <th>Кількість (шт)</th>
-              <th>Загальний метраж (м.п.)</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${sortedGlobal.map(([len, count], index) => `
-              <tr>
-                <td>${index + 1}</td>
-                <td><strong>${isPicket ? Math.round(Number(len)/10) : len}</strong></td>
-                <td>${count}</td>
-                <td>${((Number(len) * count) / 1000).toFixed(2)}</td>
-              </tr>
-            `).join('')}
-          </tbody>
-          <tfoot>
-             <tr class="total-row">
-                <td colspan="2">РАЗОМ</td>
-                <td>${totalProjectStats.totalSheetsCount}</td>
-                <td>${(slopes.reduce((acc, s) => acc + s.sheets.reduce((a, sh) => a + sh.length, 0), 0) / 1000).toFixed(2)} м.п.</td>
-             </tr>
-          </tfoot>
-        </table>
 
         ${slopeSections}
 
