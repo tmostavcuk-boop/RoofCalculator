@@ -240,7 +240,6 @@ export default function App() {
       } else if (e.data && e.data.type === 'PDF_GENERATED') {
         try {
           const base64Str = e.data.data;
-          // Перетворюємо Base64 назад у File
           const arr = base64Str.split(',');
           // eslint-disable-next-line
           const mime = arr[0].match(/:(.*?);/)?.[1] || 'application/pdf';
@@ -251,7 +250,6 @@ export default function App() {
           const blob = new Blob([u8arr], {type: mime});
           const file = new File([blob], 'RoofMaster_Spec.pdf', { type: 'application/pdf' });
           
-          // Викликаємо Share API з головного вікна, де є права
           if (navigator.canShare && navigator.canShare({ files: [file] })) {
             await navigator.share({
               files: [file],
@@ -261,9 +259,8 @@ export default function App() {
             throw new Error('Share unsupported');
           }
         } catch (err) {
-          // Надійний fallback для Android WebView
           const a = document.createElement('a');
-          a.href = e.data.data; // Віддаємо прямий Base64 файл
+          a.href = e.data.data; 
           a.download = 'RoofMaster_Spec.pdf';
           document.body.appendChild(a);
           a.click();
@@ -385,9 +382,7 @@ export default function App() {
                     <rect width="${sheet.width}" height="${sheet.length}" fill="${sheet.color}" fill-opacity="0.15" stroke="#EF4444" stroke-width="${strokeW}" stroke-dasharray="20,10" />
                     
                     <g transform="translate(${cx}, ${cy}) rotate(${rotate})">
-                         <!-- Outline -->
                          <text x="0" y="0" text-anchor="middle" dominant-baseline="central" fill="none" stroke="white" stroke-width="${fontSize * 0.1}" font-size="${fontSize}" font-weight="bold" font-family="sans-serif">${labelText}</text>
-                         <!-- Text -->
                          <text x="0" y="0" text-anchor="middle" dominant-baseline="central" fill="#991B1B" font-size="${fontSize}" font-weight="bold" font-family="sans-serif">${labelText}</text>
                     </g>
                 </g>
@@ -401,9 +396,7 @@ export default function App() {
 
         return `<svg viewBox="${viewBox}" style="width:100%; height:100%;" preserveAspectRatio="xMidYMid meet">
             <path d="${bgPath}" fill="#F1F5F9" stroke="none" fill-rule="evenodd" />
-            
             ${sheetsSvg}
-            
             <path d="${outlinePath}" fill="none" stroke="#2563EB" stroke-width="8" />
             ${holesSvg}
         </svg>`;
@@ -510,11 +503,9 @@ export default function App() {
                 html2canvas: { scale: 2 },
                 jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
             };
-            // Зберігаємо як Base64 рядок
             html2pdf().set(opt).from(document.body).output('datauristring').then(function(pdfBase64) {
                 controls.style.display = 'flex';
                 btn.innerHTML = originalText;
-                // Відправляємо згенерований PDF у головне вікно React
                 window.parent.postMessage({ type: 'PDF_GENERATED', data: pdfBase64 }, '*');
             }).catch(function(e) {
                 controls.style.display = 'flex';
@@ -850,10 +841,8 @@ export default function App() {
         const newPoints = [...points];
 
         if (lockedPoint === 'p1') {
-            // Точка 1 зафіксована, рухаємо Точку 2
             newPoints[i2] = { x: p1.x + dx * ratio, y: p1.y + dy * ratio };
         } else {
-            // Точка 2 зафіксована, рухаємо Точку 1 у протилежному напрямку
             newPoints[i1] = { x: p2.x - dx * ratio, y: p2.y - dy * ratio };
         }
         return newPoints;
@@ -906,22 +895,18 @@ export default function App() {
   };
 
   const getMergedSegments = (minVal: number, maxVal: number, isVertical: boolean) => {
-      // 1. Базові лінії сканування (з невеликим відступом всередину)
       let scanLines = [minVal + 1, maxVal - 1, (minVal + maxVal) / 2];
       
-      // 2. Додаємо всі вершини, що потрапляють всередину діапазону (для точного визначення ширини складних фігур)
       const allPolys = [vertices, ...holes];
       allPolys.forEach(poly => {
           poly.forEach(p => {
               const val = isVertical ? p.x : p.y;
-              // Fix: Враховуємо вершини, що лежать точно на межах ряду (>= та <=)
               if (val >= minVal && val <= maxVal) {
                   scanLines.push(val);
               }
           });
       });
 
-      // Сортуємо та прибираємо дублікати
       scanLines = [...new Set(scanLines)].sort((a, b) => a - b);
 
       let segments: [number, number][] = [];
@@ -939,7 +924,6 @@ export default function App() {
       let current = segments[0];
       for (let i = 1; i < segments.length; i++) {
           const next = segments[i];
-          // Об'єднуємо сегменти, якщо вони перетинаються або торкаються (<= замість <)
           if (next[0] <= current[1]) {
               current[1] = Math.max(current[1], next[1]);
           } else { 
@@ -952,7 +936,6 @@ export default function App() {
   };
 
   const calculateLayout = useCallback(() => {
-    // Only calculate for ACTIVE slope
     const minX = Math.min(...vertices.map(p => p.x));
     const maxX = Math.max(...vertices.map(p => p.x));
     const minY = Math.min(...vertices.map(p => p.y));
@@ -963,97 +946,73 @@ export default function App() {
     const overlap = material.overlap || 0;
     const isTile = material.type === 'tile';
     
-    // ДОПУСТИМІ РОЗМІРИ ТА МЕРТВІ ЗОНИ
     const waveStep = material.waveStep || 350;
     const waveTail = material.waveTail || 150;
     
     const fixTileLength = (len: number) => {
-        // Округлюємо до найближчих 50 мм в більшу сторону
         let fixed = Math.ceil(len / 50) * 50;
-        
-        // Мінімальна довжина (зазвичай Хвиля + Хвіст = 350 + 150 = 500)
         const minLen = waveStep + waveTail; 
         if (fixed < minLen) fixed = minLen;
         
-        // Знаходимо позицію відносно початку "хвоста" поточної хвилі
         let localPos = (fixed - waveTail) % waveStep;
-        if (localPos < 0) localPos += waveStep; // Захист від мінуса
+        if (localPos < 0) localPos += waveStep; 
         
-        // Мертва зона: якщо локальна позиція більше 200 (тобто від 250 до 349)
-        // Наприклад: 750 -> localPos = (750 - 150)%350 = 250 -> потрапляє в мертву зону
+        // Мертва зона зазвичай у межах 200..349 (відразу перед сходинкою наступної хвилі)
         if (localPos > 200) {
-            fixed += (waveStep - localPos); // Перестрибуємо на початок наступної хвилі (наприклад, 850)
+            fixed += (waveStep - localPos); 
         }
         
         return fixed;
     };
 
+    // --- Розрахунок кроків та зміщень ---
+    let stepY = maxLength - overlap;
+    let maxValidLength = maxLength;
+    
+    if (isTile) {
+        const waveCount = Math.floor((maxLength - waveTail) / waveStep);
+        maxValidLength = waveCount > 0 ? waveCount * waveStep + waveTail : waveStep + waveTail;
+        // Крок по Y розраховується як довжина нижнього листа МІНУС нахлест
+        stepY = maxValidLength - overlap;
+    }
+
     if (material.type === 'siding') {
-        // --- SIDING: Horizontal Strips ---
         const gridOriginY = maxY + layoutOffset.y; 
-        const startRow = 0;
-        // Calculate needed rows to cover full height from minY to maxY
         const totalHeight = maxY - minY;
         const endRow = Math.ceil(totalHeight / material.effectiveWidth) + 2; 
 
-        for (let i = startRow; i <= endRow; i++) {
-             // Calculate strip boundaries (going UP from bottom, physically)
-             // Visual: Siding is usually installed from bottom up
+        for (let i = 0; i <= endRow; i++) {
              const stripBottom = gridOriginY - i * material.effectiveWidth;
              const stripTop = stripBottom - material.effectiveWidth;
              
-             // Check if this horizontal strip intersects with the bounding box of the roof
              if (stripBottom < minY && stripTop < minY) continue; 
              if (stripTop > maxY && stripBottom > maxY) continue;
 
-             // Find horizontal segments where roof exists in this strip
-             const segments = getMergedSegments(stripTop, stripBottom, false); // false = horizontal intersection scan
-             
+             const segments = getMergedSegments(stripTop, stripBottom, false);
              const panelOriginX = minX + layoutOffset.x;
-             // Siding step is horizontal. 
-             // stepX defines where the NEXT panel starts. 
-             // Ideally stepX = maxLength - overlap.
              const stepX = maxLength - overlap;
 
              segments.forEach(([xMin, xMax]) => {
-                 // xMin and xMax are the absolute X boundaries of the roof shape at this Y level.
-                 // We need to cover the range [xMin, xMax].
-
-                 // Calculate index of the first potential panel that could cover xMin
                  const startM = Math.floor((xMin - panelOriginX) / stepX);
-                 
-                 // Estimate how many panels we need to cover the width
                  const count = Math.ceil((xMax - xMin) / stepX) + 2;
 
                  for (let offset = 0; offset < count; offset++) {
                      const m = startM + offset;
-                     
-                     // Theoretical panel coordinates (if it were a full infinite grid)
                      const theoLeft = panelOriginX + m * stepX;
                      const theoRight = theoLeft + maxLength;
-
-                     // Calculate the INTERSECTION of the theoretical panel with the actual roof segment.
-                     // This determines the physical piece we need to cut/install.
                      const visibleLeft = Math.max(theoLeft, xMin);
                      const visibleRight = Math.min(theoRight, xMax);
-                     
                      const visibleWidth = visibleRight - visibleLeft;
 
-                     // If this panel is completely outside the roof segment, skip it
                      if (visibleWidth <= 1) continue;
-
-                     // Specification Logic:
-                     // The 'label' should reflect the cut length. 
-                     // visibleWidth is exactly the length of the piece needed to cover the area from visibleLeft to visibleRight.
-                     // (Taking into account that overlap is handled by the positioning of adjacent panels via stepX).
                      
                      newSheets.push({
                          id: `s-${i}-${m}`,
                          x: visibleLeft,
-                         y: stripTop, // Visual position
+                         y: stripTop,
                          width: Math.round(visibleWidth), 
-                         length: material.totalWidth, // Height of panel
-                         label: Math.round(visibleWidth), // Real cut length for spec
+                         length: material.totalWidth, 
+                         label: Math.round(visibleWidth), 
                          fullLength: Math.round(visibleWidth),
                          color: COLORS[Math.abs(i) % COLORS.length],
                          row: i
@@ -1062,26 +1021,15 @@ export default function App() {
              });
         }
     } else {
-        // --- TILE, PROFILE & PICKET: Vertical Strips ---
         const gridOriginX = minX + layoutOffset.x;
-        // Determine column range to cover minX to maxX
         const startK = Math.floor((minX - gridOriginX) / material.effectiveWidth);
         const endK = Math.floor((maxX - gridOriginX) / material.effectiveWidth) + 1;
         
-        let stepY = maxLength - overlap;
-        if (isTile) {
-            const waveCount = Math.floor((maxLength - waveTail) / waveStep);
-            if (waveCount > 0) stepY = waveCount * waveStep;
-        }
-
-        // PICKET CALCULATION HELPERS
         const slopeWidth = maxX - minX;
         const centerX = minX + slopeWidth / 2;
-        // Точно визначаємо індекси ПЕРШОГО і ОСТАННЬОГО фактично видимого штахетника
         const actualStartK = Math.floor((minX - gridOriginX) / material.effectiveWidth);
         const actualEndK = Math.ceil((maxX - gridOriginX) / material.effectiveWidth) - 1;
         const totalPickets = Math.max(1, actualEndK - actualStartK + 1);
-        // Розраховуємо центр САМЕ паркану (а не креслення)
         const realFenceWidth = totalPickets * material.effectiveWidth;
         const realStartX = gridOriginX + actualStartK * material.effectiveWidth;
         const realCenterX = realStartX + realFenceWidth / 2;
@@ -1089,117 +1037,77 @@ export default function App() {
         for (let i = startK; i <= endK; i++) {
            const stripLeft = gridOriginX + i * material.effectiveWidth;
            const stripRight = stripLeft + material.effectiveWidth;
-           const stripCenter = stripLeft + material.effectiveWidth / 2; // Center of current picket/sheet
+           const stripCenter = stripLeft + material.effectiveWidth / 2;
            
-           // Find vertical segments where roof exists in this vertical strip
-           const segments = getMergedSegments(stripLeft, stripRight, true); // true = vertical intersection scan
+           const segments = getMergedSegments(stripLeft, stripRight, true);
 
            segments.forEach(([yMin, yMax]) => {
-                // yMin = bottom-most point of roof segment in this strip
-                // yMax = top-most point
-                
-                // We need to cover from yMin to yMax
-                // Sheets usually start from bottom (yMin) and go up
-                // Start sheet alignment from yMin
-                
-                // Calculate number of sheets needed
                 const totalLen = yMax - yMin;
                 if (totalLen <= 0) return;
 
-                // Calculate sheet positions
-                let currentY = yMin; // Start from bottom
+                let currentY = yMin; 
                 let sheetIndex = 0;
 
                 while (currentY < yMax) {
-                    let neededLen = maxLength; // Default to max length
-                    
-                    // If this is the last sheet or only sheet
-                    if (currentY + neededLen >= yMax) {
-                        neededLen = yMax - currentY;
-                    }
-                    
-                    // Visual adjustments for Tile
-                    let visualLen = neededLen;
-                    let orderedLen = neededLen;
+                    let orderedLen = maxLength; 
                     
                     if (isTile) {
-                         // Logic for tile wave snapping
-                         if (currentY + stepY + waveTail < yMax) {
-                             orderedLen = stepY + waveTail;
-                             visualLen = stepY + waveTail;
+                         if (currentY + maxValidLength < yMax) {
+                             orderedLen = maxValidLength;
                          } else {
-                             let physicalNeeded = neededLen;
-                             if (sheetIndex > 0) physicalNeeded += waveTail;
-                             orderedLen = fixTileLength(physicalNeeded);
-                             visualLen = neededLen;
+                             // ВІДКОРЕГОВАНИЙ АЛГОРИТМ: Нижні листи вже забезпечили свій нахлест.
+                             // Відстань від фізичного низу (currentY) до вершини (yMax)
+                             // це і є точна фізична довжина шматка, який потрібен.
+                             let neededLen = yMax - currentY;
+                             orderedLen = fixTileLength(neededLen);
                          }
                     } else if (material.type === 'picket') {
-                        // --- PICKET ARCH LOGIC ---
                         const availableHeight = totalLen;
-                        // Fix: Використовуємо реальну висоту секції як базу, якщо вона менша за налаштування макс. довжини.
-                        // Це запобігає ситуації, коли арка "зрізається" плоскою лінією верху секції.
                         let peakHeight = Math.min(material.maxLength, availableHeight);
-                        
-                        let picketH = peakHeight; // Default to peak
+                        let picketH = peakHeight; 
 
                         if (material.picketProfile && material.picketProfile !== 'straight') {
-                            const dist = Math.abs(stripCenter - realCenterX); // Відстань від центру
-                            const W = realFenceWidth; // Ширина всієї секції
-                            const H = material.archHeight || 0; // Глибина арки
+                            const dist = Math.abs(stripCenter - realCenterX); 
+                            const W = realFenceWidth; 
+                            const H = material.archHeight || 0; 
                             
                             if (H > 0 && W > 0) {
-                                // Розрахунок радіуса кола: R = H/2 + W^2 / 8H
                                 const R = (H / 2) + ((W * W) / (8 * H));
-                                const safeDist = Math.min(dist, R); // Запобіжник
-                                
-                                // Висота точки на колі
+                                const safeDist = Math.min(dist, R); 
                                 const arcOffset = Math.sqrt(R * R - safeDist * safeDist) - (R - H);
                                 
                                 if (material.picketProfile === 'convex') {
-                                    // Опукла (гірка): центр найвищий
                                     picketH = (peakHeight - H) + arcOffset;
                                 }
                             }
                         }
 
-                        // Round to nearest 10mm
                         picketH = Math.round(picketH / 10) * 10;
-                        
-                        // Clip to geometric limits (can't be taller than the drawn box)
                         if (picketH > availableHeight) picketH = Math.floor(availableHeight / 10) * 10;
                         if (picketH < 0) picketH = 0;
 
                         orderedLen = picketH;
-                        visualLen = picketH;
                     } else {
                         // Profile
                         if (currentY + maxLength < yMax) {
-                            // Full sheet in middle
-                            visualLen = maxLength;
                             orderedLen = maxLength;
                         } else {
-                            // Top sheet
-                             let physicalNeeded = neededLen;
-                             if (sheetIndex > 0) physicalNeeded += overlap;
-                             orderedLen = physicalNeeded;
-                             visualLen = neededLen;
+                            orderedLen = yMax - currentY;
                         }
                     }
 
-                    if (visualLen > 10) {
-                        // For Picket: Y position is fixed at bottom
+                    if (orderedLen > 10) {
                         let displayY = currentY;
                         if (material.type === 'picket') {
-                             // Pickets sit on the bottom line (yMin)
                              displayY = yMin;
                         }
 
                          newSheets.push({
                             id: `s-${i}-${sheetIndex}-${currentY.toFixed(0)}`,
                             x: stripLeft,
-                            y: displayY, // Position from bottom
+                            y: displayY, // Фізична координата низу листа
                             width: material.totalWidth,
-                            length: Math.round(visualLen), // Visual height
+                            length: Math.round(orderedLen), // Фізична довжина листа (візуально перекриватимуться на кресленні)
                             label: Math.round(orderedLen),
                             fullLength: Math.round(orderedLen),
                             color: COLORS[Math.abs(sheetIndex) % COLORS.length],
@@ -1207,11 +1115,11 @@ export default function App() {
                         });
                     }
 
-                    // Move up for next sheet
+                    // Переміщуємось вище для наступного листа
                     if (isTile) {
-                        currentY += stepY;
+                        currentY += stepY; // stepY = maxValidLength - overlap
                     } else if (material.type === 'picket') {
-                        currentY += 999999; // One picket per vertical slot
+                        currentY += 999999; 
                     } else {
                         currentY += (maxLength - overlap);
                     }
@@ -1245,10 +1153,8 @@ export default function App() {
           const px = p.x - cx;
           const py = p.y - cy;
           if (direction === 'cw') {
-              // 90 градусів за годинниковою
               return { x: cx + py, y: cy - px };
           } else {
-              // 90 градусів проти годинникової
               return { x: cx - py, y: cy + px };
           }
       };
@@ -1383,7 +1289,6 @@ export default function App() {
 
   const pointRadius = Math.max(50, 10 / uiScale);
 
-  // Helper for clipPath
   const slopePath = useMemo(() => {
      return `M ${vertices.map(toSvg).map(p => `${p.x} ${p.y}`).join(' L ')} Z ${holes.map(h => `M ${h.map(toSvg).map(p => `${p.x} ${p.y}`).join(' L ')} Z`).join(' ')}`;
   }, [vertices, holes]);
@@ -1497,9 +1402,9 @@ export default function App() {
                              </div>
                              <div>
                                 <label className="text-[10px] text-gray-500 font-bold uppercase block mb-1">
-                                    {material.type === 'tile' ? 'Нахлест (авто = Хвіст)' : 'Нахлест по довжині'}
+                                    Нахлест по висоті (мм)
                                 </label>
-                                <input type="number" value={material.overlap || 0} onChange={(e) => setMaterial({...material, overlap: +e.target.value})} disabled={material.type === 'tile'} className="w-full border rounded-lg p-2 text-lg font-bold bg-gray-50 disabled:opacity-50"/>
+                                <input type="number" value={material.overlap || 0} onChange={(e) => setMaterial({...material, overlap: +e.target.value})} className="w-full border rounded-lg p-2 text-lg font-bold bg-gray-50"/>
                              </div>
                         </div>
                     )}
@@ -1518,15 +1423,14 @@ export default function App() {
                             </div>
                             <div className="bg-orange-50 p-3 rounded-lg border border-orange-200 text-xs text-orange-800 space-y-1 mt-2">
                                 <div className="font-bold flex items-center gap-1"><Info size={14}/> Допустимі стандартні розміри</div>
-                                <p className="opacity-90">Щоб уникнути різу по сходинці (замок хвилі), рекомендується замовляти листи довжиною, що є кратною 50 мм, крім "мертвих зон":</p>
+                                <p className="opacity-90">Щоб уникнути різу по сходинці (замок хвилі), система округляє розміри вверх (до 50мм) і обходить "мертві зони":</p>
                                 <div className="flex flex-wrap gap-1 mt-2">
                                     {(() => {
                                         const demoSizes = [];
                                         const wStep = material.waveStep || 350;
                                         const wTail = material.waveTail || 150;
-                                        // Генеруємо візуальний приклад перших допустимих розмірів
                                         for (let n = 1; n <= 3; n++) {
-                                            const base = n * wStep + wTail - wStep; // Start of valid wave sizes (e.g. 500)
+                                            const base = n * wStep + wTail - wStep; 
                                             for (let off = 0; off <= 200; off += 50) {
                                                 const len = base + off;
                                                 if (len <= material.maxLength) demoSizes.push(len);
@@ -1572,7 +1476,6 @@ export default function App() {
              
              <div className="overflow-y-auto p-4 grid grid-cols-2 sm:grid-cols-3 gap-4">
                 {ROOF_TEMPLATES.map(tmpl => {
-                    // Розраховуємо SVG viewBox для правильного масштабування фігури в мініатюрі
                     const mapped = tmpl.points.map(p => ({ x: p.x, y: -p.y }));
                     const minX = Math.min(...mapped.map(p => p.x));
                     const maxX = Math.max(...mapped.map(p => p.x));
@@ -1801,7 +1704,6 @@ export default function App() {
                                 </>
                             )}
                         </div>
-                        {/* TOTAL STATS SUMMARY */}
                         <div className="mt-2 pt-2 border-t border-gray-200">
                              <div className="text-[10px] font-bold text-gray-400 uppercase mb-1">Загалом по проекту</div>
                              <div className="flex justify-between items-center text-xs">
@@ -1855,7 +1757,6 @@ export default function App() {
             onPointerUp={handlePointerUp}
             onPointerLeave={handlePointerUp}
           >
-            {/* FORCE RECENTER BUTTON & ZOOM CONTROLS */}
             <div className="absolute top-4 right-4 flex flex-col gap-2 z-40">
                <button onClick={handleZoomIn} className="p-3 bg-white shadow-md rounded-full text-blue-600 active:bg-blue-50">
                   <Plus size={24}/>
@@ -1879,8 +1780,8 @@ export default function App() {
                   <rect x="-10000" y="-10000" width="20000" height="20000" fill="url(#grid)" />
                   
                   {/* --- AXES (Visual Guides) --- */}
-                  <line x1="-10000" y1="0" x2="10000" y2="0" stroke="#EF4444" strokeWidth="3" strokeOpacity="0.5" /> {/* X-Axis (Red) */}
-                  <line x1="0" y1="-10000" x2="0" y2="10000" stroke="#10B981" strokeWidth="3" strokeOpacity="0.5" /> {/* Y-Axis (Green) */}
+                  <line x1="-10000" y1="0" x2="10000" y2="0" stroke="#EF4444" strokeWidth="3" strokeOpacity="0.5" /> 
+                  <line x1="0" y1="-10000" x2="0" y2="10000" stroke="#10B981" strokeWidth="3" strokeOpacity="0.5" /> 
 
                   {/* --- 1. Background Fill (Bottom Layer) --- */}
                   <path 
@@ -1889,7 +1790,6 @@ export default function App() {
                   />
                   
                   {/* --- 2. Sheets (Middle Layer) --- */}
-                  {/* REMOVED CLIP PATH: Sheets now display as full rectangles overlapping the roof shape */}
                   <g>
                     {step === 'layout' && sheets.map(sheet => {
                         const svgPos = toSvg({x: sheet.x, y: sheet.y + sheet.length});
@@ -1898,21 +1798,18 @@ export default function App() {
                         const isSelected = selectedSheetIds.includes(sheet.id);
                         const strokeW = isSelected ? 25 : (isSiding ? 2 : 5);
                         
-                        // Text Configuration
-                        const rotateText = !isSiding; // Rotate for everything except Siding
+                        const rotateText = !isSiding; 
                         const cx = sheet.width / 2;
                         const cy = sheet.length / 2;
 
-                        // Font Size Calculation
                         let fontSize = 150;
                         if (isSiding) {
                             fontSize = sheet.length * 0.4;
                         } else if (isPicket) {
-                            fontSize = Math.min(sheet.length * 0.4, 140); // Max 140 for picket to fit width visually
+                            fontSize = Math.min(sheet.length * 0.4, 140); 
                         } else {
-                            // Tile/Profile
                             fontSize = Math.min(sheet.length * 0.3, sheet.width * 0.25);
-                            if (fontSize < 150) fontSize = 150; // Min legible size
+                            if (fontSize < 150) fontSize = 150; 
                         }
 
                         const labelText = sheet.label.toString();
@@ -1925,15 +1822,12 @@ export default function App() {
                                 width={sheet.width} 
                                 height={sheet.length} 
                                 fill={sheet.color} 
-                                fillOpacity={0.2} // Increased opacity slightly for visibility
+                                fillOpacity={0.2} 
                                 stroke={isSelected ? '#F97316' : '#EF4444'} 
                                 strokeWidth={strokeW} 
                                 strokeDasharray={isSelected ? 'none' : '20,10'}
                               />
-                              
-                              {/* Centered Text Group */}
                               <g transform={`translate(${cx}, ${cy}) rotate(${rotateText ? -90 : 0})`}>
-                                  {/* Outline for contrast */}
                                   <text 
                                     textAnchor="middle" 
                                     dominantBaseline="central"
@@ -1946,7 +1840,6 @@ export default function App() {
                                   >
                                     {labelText}
                                   </text>
-                                  {/* Main Text */}
                                   <text 
                                     textAnchor="middle" 
                                     dominantBaseline="central"
@@ -1964,20 +1857,17 @@ export default function App() {
                   </g>
                   
                   {/* --- 3. Outlines and Highlights (Top Layer) --- */}
-                  {/* Outer Stroke - Thin on top - BLUE */}
                   <path 
                     d={`M ${vertices.map(toSvg).map(p => `${p.x} ${p.y}`).join(' L ')} Z`}
                     fill="none" stroke="#2563EB" strokeWidth="5" vectorEffect="non-scaling-stroke"
                   />
                   
-                  {/* Holes Stroke & Fill (RED) */}
                   {holes.map((hole, hi) => (
                     <g key={`hg-${hi}`}>
                       <path 
                         d={`M ${hole.map(toSvg).map(p => `${p.x} ${p.y}`).join(' L ')} Z`}
                         fill="rgba(239, 68, 68, 0.2)" stroke="#EF4444" strokeWidth="4" strokeDasharray="10,10" vectorEffect="non-scaling-stroke"
                       />
-                      {/* Central Move Handle for Hole */}
                       {step === 'geometry' && (() => {
                           const center = getCentroid(hole);
                           const centerSvg = toSvg(center);
@@ -1997,7 +1887,6 @@ export default function App() {
                     </g>
                   ))}
 
-                  {/* Vertices (Outer) */}
                   {step === 'geometry' && vertices.map((p, i) => {
                     const svgP = toSvg(p);
                     const isSelected = selectedVertex?.polyIndex === -1 && selectedVertex?.vertIndex === i;
@@ -2012,7 +1901,6 @@ export default function App() {
                     )
                   })}
 
-                  {/* Hole Vertices */}
                   {step === 'geometry' && holes.map((hole, hi) => (
                       hole.map((p, i) => {
                         const svgP = toSvg(p);
@@ -2028,7 +1916,6 @@ export default function App() {
                       })
                   ))}
 
-                  {/* Interactive Dimensions (Outer Only for simplicity) */}
                   {step === 'geometry' && vertices.map((p, i) => {
                     const next = vertices[(i+1)%vertices.length];
                     const svgP = toSvg(p);
@@ -2071,9 +1958,7 @@ export default function App() {
                     )
                   })}
                   
-                  {/* Height Dimension (Vertical Center) - RESTORED */}
                   {step === 'geometry' && (() => {
-                      // Calculations in World Space based on active slope vertices
                       const ys = vertices.map(p => p.y);
                       const minY = Math.min(...ys);
                       const maxY = Math.max(...ys);
@@ -2084,7 +1969,6 @@ export default function App() {
                       const height = maxY - minY;
                       const fs = pointRadius * 1.0;
                       
-                      // Convert to SVG for rendering
                       const svgTop = toSvg({x: centerX, y: maxY});
                       const svgBottom = toSvg({x: centerX, y: minY});
                       
@@ -2099,7 +1983,6 @@ export default function App() {
                             }}
                             className="cursor-pointer hover:opacity-80 group"
                           >
-                             {/* Vertical Dashed Line */}
                              <line 
                                 x1={centerX} y1={svgBottom.y} 
                                 x2={centerX} y2={svgTop.y} 
@@ -2107,11 +1990,9 @@ export default function App() {
                                 strokeWidth="4" 
                                 strokeDasharray="20,20"
                              />
-                             {/* Top/Bottom Arrows */}
                              <path d={`M ${centerX} ${svgBottom.y} L ${centerX-15} ${svgBottom.y-30} L ${centerX+15} ${svgBottom.y-30} Z`} fill={isEditingHeight ? "#8B5CF6" : "#A78BFA"} />
                              <path d={`M ${centerX} ${svgTop.y} L ${centerX-15} ${svgTop.y+30} L ${centerX+15} ${svgTop.y+30} Z`} fill={isEditingHeight ? "#8B5CF6" : "#A78BFA"} />
                              
-                             {/* Label Box */}
                              <rect 
                                 x={centerX - fs*3} y={(svgTop.y+svgBottom.y)/2 - fs} 
                                 width={fs*6} height={fs*2} 
@@ -2134,7 +2015,6 @@ export default function App() {
                       );
                   })()}
 
-                  {/* Hole Dimensions */}
                   {step === 'geometry' && holes.map((hole, hi) => (
                       hole.map((p, i) => {
                         const next = hole[(i+1)%hole.length];
@@ -2187,7 +2067,6 @@ export default function App() {
       <div className="flex-none bg-white border-t z-50 p-2 pb-safe min-h-[70px] flex items-center relative">
          {step === 'geometry' ? (
             selectedEdge !== null ? (
-               // EDGE EDIT MODE
                <div className="flex w-full gap-2 items-center px-2">
                   <div className="flex-1 flex flex-col gap-1">
                      <div className="flex items-center justify-between">
@@ -2224,7 +2103,6 @@ export default function App() {
                   </button>
                </div>
             ) : isEditingHeight ? (
-                // HEIGHT EDIT MODE
                <div className="flex w-full gap-2 items-center px-2">
                   <div className="flex-1">
                      <label className="text-[10px] text-purple-600 font-bold uppercase ml-1 block flex items-center gap-1">
@@ -2253,7 +2131,6 @@ export default function App() {
                   </button>
                </div>
             ) : selectedVertex !== null ? (
-                // VERTEX EDIT MODE
                 <div className="flex w-full gap-2 items-center px-2">
                    {(() => {
                        const { polyIndex, vertIndex } = selectedVertex;
@@ -2292,7 +2169,6 @@ export default function App() {
                    })()}
                 </div>
             ) : (
-               // DEFAULT MODE
                <div className="flex w-full gap-2 overflow-x-auto no-scrollbar items-center px-1">
                   <button onClick={() => setShowTemplates(true)} className="px-3 py-2 bg-gray-100 rounded text-xs font-bold whitespace-nowrap border border-gray-200 flex items-center gap-1">
                       <LayoutTemplate size={16} className="text-gray-600"/>
@@ -2316,7 +2192,6 @@ export default function App() {
             )
          ) : (
              selectedSheetIds.length > 0 ? (
-               // SHEET EDIT MODE
                <div className="flex w-full gap-2 items-center px-2">
                   <button 
                      onClick={() => setIsMultiSelect(!isMultiSelect)}
@@ -2351,7 +2226,6 @@ export default function App() {
                            setSheets(prev => prev.map(s => {
                                if (selectedSheetIds.includes(s.id)) {
                                    if (material.type === 'picket') {
-                                       // Picket: input in CM, stored in MM
                                        const newLength = val * 10;
                                        return { ...s, length: newLength, label: newLength, fullLength: newLength };
                                    } else if (material.type === 'siding') {
@@ -2364,7 +2238,6 @@ export default function App() {
                            }));
                        }}
                      />
-                     {/* WARNING MSG HERE */}
                      {(() => {
                         if (material.type !== 'tile' || selectedSheets.length === 0) return null;
                         const wave = material.waveStep || 350;
