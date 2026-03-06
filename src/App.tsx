@@ -8,7 +8,7 @@ import {
   Square, Scissors, Layers, ChevronDown, ChevronUp, FileText,
   MinusSquare, Move, TrendingUp, TrendingDown, Minus, ArrowUpDown, Crosshair,
   Plus, Download, ArrowUp, ArrowDown, ArrowLeft, LayoutTemplate,
-  Copy, Edit2, Check, RotateCcw, RotateCw
+  Copy, Edit2, Check, RotateCcw, RotateCw, AlertTriangle
 } from 'lucide-react';
 
 // --- Types ---
@@ -28,6 +28,8 @@ interface MaterialParams {
   overlap?: number;
   picketProfile?: PicketProfile;
   archHeight?: number;
+  waveStep?: number;
+  waveTail?: number;
 }
 
 interface Sheet {
@@ -60,7 +62,7 @@ interface ChatMessage {
 const COLORS = ['#60A5FA', '#3B82F6', '#2563EB', '#1D4ED8'];
 
 const MATERIAL_PRESETS: Record<MaterialType, MaterialParams> = {
-  tile: { type: 'tile', name: 'Металочерепиця', totalWidth: 1180, effectiveWidth: 1100, maxLength: 4000, overlap: 150 },
+  tile: { type: 'tile', name: 'Металочерепиця', totalWidth: 1180, effectiveWidth: 1100, maxLength: 4000, overlap: 150, waveStep: 350, waveTail: 150 },
   profile: { type: 'profile', name: 'Профнастил', totalWidth: 1160, effectiveWidth: 1100, maxLength: 6000, overlap: 150 },
   siding: { type: 'siding', name: 'Сайдинг', totalWidth: 230, effectiveWidth: 200, maxLength: 3660, overlap: 50 },
   picket: { type: 'picket', name: 'Штахетник', totalWidth: 115, effectiveWidth: 135, maxLength: 2000, gap: 20, overlap: 0, picketProfile: 'straight', archHeight: 300 }
@@ -960,13 +962,29 @@ export default function App() {
     const maxLength = material.maxLength || 6000;
     const overlap = material.overlap || 0;
     const isTile = material.type === 'tile';
-    const tileWave = 350;
+    
+    // ДОПУСТИМІ РОЗМІРИ ТА МЕРТВІ ЗОНИ
+    const waveStep = material.waveStep || 350;
+    const waveTail = material.waveTail || 150;
     
     const fixTileLength = (len: number) => {
-        let fixed = len;
-        if (fixed < 450) fixed = 450;
-        const rem = fixed % tileWave;
-        if (rem >= 0 && rem < 90) fixed += (90 - rem + 5); 
+        // Округлюємо до найближчих 50 мм в більшу сторону
+        let fixed = Math.ceil(len / 50) * 50;
+        
+        // Мінімальна довжина (зазвичай Хвиля + Хвіст = 350 + 150 = 500)
+        const minLen = waveStep + waveTail; 
+        if (fixed < minLen) fixed = minLen;
+        
+        // Знаходимо позицію відносно початку "хвоста" поточної хвилі
+        let localPos = (fixed - waveTail) % waveStep;
+        if (localPos < 0) localPos += waveStep; // Захист від мінуса
+        
+        // Мертва зона: якщо локальна позиція більше 200 (тобто від 250 до 349)
+        // Наприклад: 750 -> localPos = (750 - 150)%350 = 250 -> потрапляє в мертву зону
+        if (localPos > 200) {
+            fixed += (waveStep - localPos); // Перестрибуємо на початок наступної хвилі (наприклад, 850)
+        }
+        
         return fixed;
     };
 
@@ -1052,8 +1070,8 @@ export default function App() {
         
         let stepY = maxLength - overlap;
         if (isTile) {
-            const waveCount = Math.floor(stepY / tileWave);
-            if (waveCount > 0) stepY = waveCount * tileWave;
+            const waveCount = Math.floor((maxLength - waveTail) / waveStep);
+            if (waveCount > 0) stepY = waveCount * waveStep;
         }
 
         // PICKET CALCULATION HELPERS
@@ -1106,18 +1124,14 @@ export default function App() {
                     
                     if (isTile) {
                          // Logic for tile wave snapping
-                         if (currentY + maxLength < yMax) {
-                             // Middle sheet
-                             orderedLen = stepY + overlap;
-                             visualLen = stepY + overlap;
+                         if (currentY + stepY + waveTail < yMax) {
+                             orderedLen = stepY + waveTail;
+                             visualLen = stepY + waveTail;
                          } else {
-                             // Top sheet
-                             // Add overlap to required physical length if it's not the first sheet
                              let physicalNeeded = neededLen;
-                             if (sheetIndex > 0) physicalNeeded += overlap;
-                             
+                             if (sheetIndex > 0) physicalNeeded += waveTail;
                              orderedLen = fixTileLength(physicalNeeded);
-                             visualLen = neededLen; 
+                             visualLen = neededLen;
                          }
                     } else if (material.type === 'picket') {
                         // --- PICKET ARCH LOGIC ---
@@ -1476,16 +1490,56 @@ export default function App() {
                     </div>
 
                     {(material.type === 'tile' || material.type === 'profile' || material.type === 'siding') && (
-                        <div className="grid grid-cols-2 gap-4 pt-2 border-t">
+                        <div className="grid grid-cols-2 gap-4 pt-2 border-t mt-2">
                              <div>
                                 <label className="text-[10px] text-gray-500 font-bold uppercase block mb-1">Макс довжина (мм)</label>
                                 <input type="number" value={material.maxLength} onChange={(e) => setMaterial({...material, maxLength: +e.target.value})} className="w-full border rounded-lg p-2 text-lg font-bold bg-gray-50"/>
                              </div>
                              <div>
-                                <label className="text-[10px] text-gray-500 font-bold uppercase block mb-1">Нахлест по довжині</label>
-                                <input type="number" value={material.overlap || 0} onChange={(e) => setMaterial({...material, overlap: +e.target.value})} className="w-full border rounded-lg p-2 text-lg font-bold bg-gray-50"/>
+                                <label className="text-[10px] text-gray-500 font-bold uppercase block mb-1">
+                                    {material.type === 'tile' ? 'Нахлест (авто = Хвіст)' : 'Нахлест по довжині'}
+                                </label>
+                                <input type="number" value={material.overlap || 0} onChange={(e) => setMaterial({...material, overlap: +e.target.value})} disabled={material.type === 'tile'} className="w-full border rounded-lg p-2 text-lg font-bold bg-gray-50 disabled:opacity-50"/>
                              </div>
                         </div>
+                    )}
+
+                    {material.type === 'tile' && (
+                        <>
+                            <div className="grid grid-cols-2 gap-4 pt-2 border-t mt-2">
+                                 <div>
+                                    <label className="text-[10px] text-gray-500 font-bold uppercase block mb-1">Крок хвилі (мм)</label>
+                                    <input type="number" value={material.waveStep || 350} onChange={(e) => setMaterial({...material, waveStep: +e.target.value})} className="w-full border rounded-lg p-2 text-lg font-bold bg-gray-50"/>
+                                 </div>
+                                 <div>
+                                    <label className="text-[10px] text-gray-500 font-bold uppercase block mb-1">Хвіст / звис (мм)</label>
+                                    <input type="number" value={material.waveTail || 150} onChange={(e) => setMaterial({...material, waveTail: +e.target.value, overlap: +e.target.value})} className="w-full border rounded-lg p-2 text-lg font-bold bg-gray-50"/>
+                                 </div>
+                            </div>
+                            <div className="bg-orange-50 p-3 rounded-lg border border-orange-200 text-xs text-orange-800 space-y-1 mt-2">
+                                <div className="font-bold flex items-center gap-1"><Info size={14}/> Допустимі стандартні розміри</div>
+                                <p className="opacity-90">Щоб уникнути різу по сходинці (замок хвилі), рекомендується замовляти листи довжиною, що є кратною 50 мм, крім "мертвих зон":</p>
+                                <div className="flex flex-wrap gap-1 mt-2">
+                                    {(() => {
+                                        const demoSizes = [];
+                                        const wStep = material.waveStep || 350;
+                                        const wTail = material.waveTail || 150;
+                                        // Генеруємо візуальний приклад перших допустимих розмірів
+                                        for (let n = 1; n <= 3; n++) {
+                                            const base = n * wStep + wTail - wStep; // Start of valid wave sizes (e.g. 500)
+                                            for (let off = 0; off <= 200; off += 50) {
+                                                const len = base + off;
+                                                if (len <= material.maxLength) demoSizes.push(len);
+                                            }
+                                        }
+                                        return demoSizes.map((len, idx) => (
+                                            <span key={idx} className="bg-white px-1.5 py-0.5 rounded border border-orange-200 text-[10px] font-bold shadow-sm">{len}</span>
+                                        ));
+                                    })()}
+                                    <span className="px-1.5 py-0.5 text-[10px] font-bold text-orange-600">...</span>
+                                </div>
+                            </div>
+                        </>
                     )}
                     </>
                 )}
@@ -1501,7 +1555,6 @@ export default function App() {
     );
   }
 
-  // ... (The rest of the render block remains the same as previous) ...
   return (
     <div className="flex flex-col h-screen w-full bg-gray-100 text-gray-800 font-sans select-none overflow-hidden relative">
       
@@ -2311,6 +2364,26 @@ export default function App() {
                            }));
                        }}
                      />
+                     {/* WARNING MSG HERE */}
+                     {(() => {
+                        if (material.type !== 'tile' || selectedSheets.length === 0) return null;
+                        const wave = material.waveStep || 350;
+                        const tail = material.waveTail || 150;
+                        const firstSheet = selectedSheets[0];
+                        
+                        let localPos = (firstSheet.length - tail) % wave;
+                        if (localPos < 0) localPos += wave;
+                        
+                        const isDeadZone = localPos > 200 || firstSheet.length % 50 !== 0;
+                        if (isDeadZone) {
+                            return (
+                                <div className="text-[10px] text-red-500 font-bold mt-1 flex items-center gap-1 leading-tight">
+                                    <AlertTriangle size={12}/> Недопустимий розмір (мертва зона або некратний 50)
+                                </div>
+                            );
+                        }
+                        return null;
+                     })()}
                   </div>
                   <button onClick={() => { setSheets(p => p.filter(s => !selectedSheetIds.includes(s.id))); setSelectedSheetIds([]); }} className="h-10 px-4 bg-red-100 text-red-700 rounded-lg font-bold text-xs mt-4 border border-red-200">Видалити</button>
                </div>
