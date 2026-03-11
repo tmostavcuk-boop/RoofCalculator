@@ -226,13 +226,11 @@ export default function App() {
 
   const selectedSheets = useMemo(() => sheets.filter(s => selectedSheetIds.includes(s.id)), [sheets, selectedSheetIds]);
 
-  // Скидання виділення при зміні схилу або переходу між кроками
   useEffect(() => {
       setSelectedSheetIds([]);
       setIsMultiSelect(false);
   }, [step, activeSlopeId]);
 
-  // Handle messages from the iframe
   useEffect(() => {
     const handleMessage = async (e: MessageEvent) => {
       if (e.data === 'closePreview') {
@@ -304,12 +302,17 @@ export default function App() {
       return sheets.reduce((acc, s) => acc + (s.width * s.length / 1000000), 0);
   }, [sheets]);
 
+  const sheetsLinear = useMemo(() => {
+      return sheets.reduce((acc, s) => acc + (s.length / 1000), 0);
+  }, [sheets]);
+
   const wastePercentage = polygonArea > 0 ? ((sheetsArea - polygonArea) / sheetsArea * 100) : 0;
 
   // Global Stats
   const totalProjectStats = useMemo(() => {
       let totalArea = 0;
       let totalSheetsArea = 0;
+      let totalSheetsLinear = 0;
       let totalSheetsCount = 0;
       
       slopes.forEach(s => {
@@ -318,12 +321,13 @@ export default function App() {
           totalArea += Math.max(0, outer - inner);
           
           totalSheetsArea += s.sheets.reduce((acc, sh) => acc + (sh.width * sh.length / 1000000), 0);
+          totalSheetsLinear += s.sheets.reduce((acc, sh) => acc + (sh.length / 1000), 0);
           totalSheetsCount += s.sheets.length;
       });
       
       const totalWaste = totalArea > 0 ? ((totalSheetsArea - totalArea) / totalSheetsArea * 100) : 0;
       
-      return { totalArea, totalSheetsArea, totalWaste, totalSheetsCount };
+      return { totalArea, totalSheetsArea, totalSheetsLinear, totalWaste, totalSheetsCount };
   }, [slopes]);
 
   const getSheetGroups = (sheetList: Sheet[]) => {
@@ -345,7 +349,6 @@ export default function App() {
     const generateSlopeSvg = (slope: RoofSlope) => {
         let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
 
-        // Збір всіх точок полігону та вирізів для розрахунку області
         [...slope.vertices, ...slope.holes.flat()].map(toSvg).forEach(p => {
             if (p.x < minX) minX = p.x;
             if (p.x > maxX) maxX = p.x;
@@ -353,7 +356,6 @@ export default function App() {
             if (p.y > maxY) maxY = p.y;
         });
 
-        // ДУЖЕ ВАЖЛИВО: Враховуємо координати листів у bounding box, щоб вони не обрізалися в PDF
         slope.sheets.forEach(sheet => {
             const tl = toSvg({ x: sheet.x, y: sheet.y + sheet.length });
             const br = toSvg({ x: sheet.x + sheet.width, y: sheet.y });
@@ -376,7 +378,6 @@ export default function App() {
         if (width === 0) width = 1000;
         if (height === 0) height = 1000;
 
-        // Збільшено padding для безпечного розміщення обводки і тексту (особливо з правого боку)
         const pX = Math.max(width * 0.15, 250); 
         const pY = Math.max(height * 0.15, 250);
         
@@ -384,12 +385,10 @@ export default function App() {
         const vbHeight = height + pY * 2;
         const viewBox = `${minX - pX} ${minY - pY} ${vbWidth} ${vbHeight}`;
         
-        // Встановлюємо жорсткі розміри у пікселях, щоб html2canvas не розтягував і не обрізав SVG
         const aspect = vbWidth / vbHeight;
-        let renderH = 380; // Висота, яка поміщається на A4 аркуші 
+        let renderH = 380; 
         let renderW = renderH * aspect;
 
-        // Зменшено максимальну ширину для більшої гарантії уникнення обрізання html2canvas
         if (renderW > 680) {
             renderW = 680;
             renderH = renderW / aspect;
@@ -433,7 +432,6 @@ export default function App() {
              <path d="M ${h.map(toSvg).map(p => `${p.x} ${p.y}`).join(' L ')} Z" fill="rgba(239, 68, 68, 0.1)" stroke="#EF4444" stroke-width="10" stroke-dasharray="15,15" />
         `).join('');
 
-        // Додано overflow: visible
         return `<svg viewBox="${viewBox}" width="${renderW}" height="${renderH}" style="max-width: 100%; height: auto; display: block; margin: 0 auto; overflow: visible;" preserveAspectRatio="xMidYMid meet">
             <path d="${bgPath}" fill="#F1F5F9" stroke="none" fill-rule="evenodd" />
             ${sheetsSvg}
@@ -448,12 +446,13 @@ export default function App() {
         
         const sArea = getPolyArea(s.vertices) - s.holes.reduce((acc, h) => acc + getPolyArea(h), 0);
         const sSheetsArea = s.sheets.reduce((acc, sh) => acc + (sh.width * sh.length / 1000000), 0);
+        const sSheetsLinear = s.sheets.reduce((acc, sh) => acc + (sh.length / 1000), 0);
         
         const sUsefulArea = s.sheets.reduce((acc, sh) => {
             if (material.type === 'siding') {
                 return acc + (sh.width * material.effectiveWidth) / 1000000;
             } else if (material.type === 'picket') {
-                return acc + (sh.width * sh.length) / 1000000;
+                return acc + (sh.length) / 1000; // Погонні метри для штахетника
             } else {
                 const parts = sh.id.split('-');
                 const colId = parts[1];
@@ -484,17 +483,18 @@ export default function App() {
                     <strong>${sArea.toFixed(2)} м²</strong>
                 </li>
                 <li style="padding: 6px 0; border-bottom: 1px dashed #CBD5E1; display: flex; justify-content: space-between;">
-                    <span style="color: #475569;">Площа листів:</span>
-                    <strong>${sSheetsArea.toFixed(2)} м²</strong>
+                    <span style="color: #475569;">${isPicket ? 'Погонні метри:' : 'Площа листів:'}</span>
+                    <strong>${isPicket ? sSheetsLinear.toFixed(2) + ' м.п.' : sSheetsArea.toFixed(2) + ' м²'}</strong>
                 </li>
                 <li style="padding: 6px 0; border-bottom: 1px dashed #CBD5E1; display: flex; justify-content: space-between;">
-                    <span style="color: #475569;">Площа листів корисна:</span>
-                    <strong style="color: #16A34A;">${sUsefulArea.toFixed(2)} м²</strong>
+                    <span style="color: #475569;">${isPicket ? 'Корисні м.п.:' : 'Площа листів корисна:'}</span>
+                    <strong style="color: #16A34A;">${isPicket ? sUsefulArea.toFixed(2) + ' м.п.' : sUsefulArea.toFixed(2) + ' м²'}</strong>
                 </li>
+                ${material.type !== 'picket' ? `
                 <li style="padding: 6px 0; border-bottom: 1px dashed #CBD5E1; display: flex; justify-content: space-between;">
                     <span style="color: #475569;">Відходи в відсотках:</span>
                     <strong style="color: #DC2626;">${sWaste.toFixed(2)} %</strong>
-                </li>
+                </li>` : ''}
                 <li style="padding: 6px 0; display: flex; justify-content: space-between;">
                     <span style="color: #475569;">Кількість листів:</span>
                     <strong style="color: #2563EB;">${sCount} шт</strong>
@@ -535,7 +535,6 @@ export default function App() {
         <style>
           body { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; padding: 20px; background: #F1F5F9; margin: 0; color: #1f2937; }
           
-          /* Фіксований контейнер для коректного рендеру на мобільних і ПК */
           #pdf-content { width: 800px !important; max-width: 800px !important; margin: 0 auto; background: #fff; padding: 40px; box-sizing: border-box; box-shadow: 0 4px 10px rgba(0,0,0,0.1); border-radius: 8px; }
           
           .header { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 3px solid #1E3A8A; padding-bottom: 20px; margin-bottom: 30px; }
@@ -547,7 +546,6 @@ export default function App() {
           
           @media print {
             body { background: #fff; padding: 0; margin: 0; }
-            /* ВИДАЛЕНО width: 100%, щоб зберегти жорстку ширину 800px для точного захоплення html2canvas */
             #pdf-content { box-shadow: none; border-radius: 0; padding: 20px; margin: 0; }
             .no-print { display: none !important; }
           }
@@ -569,12 +567,13 @@ export default function App() {
         
         <div class="print-controls no-print">
             <button class="btn btn-close" onclick="window.parent.postMessage('closePreview', '*');">✕ Закрити</button>
-            <button class="btn" onclick="sharePDF()" id="pdfBtn">🖨️ Зберегти PDF</button>
+            <button class="btn" style="background: #059669;" onclick="window.print()">🖨️ Друк</button>
+            <button class="btn" onclick="sharePDF()" id="pdfBtn">💾 Зберегти PDF</button>
         </div>
         
         <script>
         function sharePDF() {
-            window.scrollTo(0, 0); // Прокручуємо вгору щоб уникнути багів з обрізанням
+            window.scrollTo(0, 0); 
             var btn = document.getElementById('pdfBtn');
             var originalText = btn.innerHTML;
             btn.innerHTML = '⏳ Формування...';
@@ -587,7 +586,6 @@ export default function App() {
                 margin: 10,
                 filename: 'RoofMaster_Spec.pdf',
                 image: { type: 'jpeg', quality: 0.98 },
-                // Додано width: 800 для гарантії захоплення точної ширини canvas-ом незалежно від екрану
                 html2canvas: { scale: 2, useCORS: true, logging: false, windowWidth: 800, width: 800 },
                 jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
             };
@@ -604,7 +602,6 @@ export default function App() {
         }
         </script>
 
-        <!-- Додано обгортку для горизонтального скролу на мобільних -->
         <div style="width: 100%; overflow-x: auto;">
           <div id="pdf-content">
               <div class="header">
@@ -638,7 +635,7 @@ export default function App() {
       Ти експерт-покрівельник у додатку Roof Master.
       Поточний проект (Схилів: ${slopes.length}):
       - Матеріал: ${material.name}
-      - Загальна площа: ${totalProjectStats.totalArea.toFixed(2)} м²
+      - Загальна площа: ${totalProjectStats.totalArea.toFixed(2)} м² ${material.type === 'picket' ? `(Загальна довжина: ${totalProjectStats.totalSheetsLinear.toFixed(2)} м.п.)` : ''}
       - Активний схил: ${activeSlope.name} (${polygonArea.toFixed(2)} м²)
     `;
   };
@@ -869,7 +866,6 @@ export default function App() {
     setLayoutOffset(prev => ({ x: prev.x + dx, y: prev.y + dy }));
   };
 
-  // Функція для переміщення ВИДІЛЕНИХ листів
   const moveSelectedSheets = useCallback((dy: number) => {
       setSheets(prev => prev.map(sheet => {
           if (selectedSheetIds.includes(sheet.id)) {
@@ -1013,7 +1009,6 @@ export default function App() {
         let localPos = (fixed - waveTail) % waveStep;
         if (localPos < 0) localPos += waveStep; 
         
-        // Мертва зона зазвичай у межах 200..349 (відразу перед сходинкою наступної хвилі)
         if (localPos > 200) {
             fixed += (waveStep - localPos); 
         }
@@ -1021,14 +1016,12 @@ export default function App() {
         return fixed;
     };
 
-    // --- Розрахунок кроків та зміщень ---
     let stepY = maxLength - overlap;
     let maxValidLength = maxLength;
     
     if (isTile) {
         const waveCount = Math.floor((maxLength - waveTail) / waveStep);
         maxValidLength = waveCount > 0 ? waveCount * waveStep + waveTail : waveStep + waveTail;
-        // Крок по Y розраховується як довжина нижнього листа МІНУС нахлест
         stepY = maxValidLength - overlap;
     }
 
@@ -1041,7 +1034,6 @@ export default function App() {
              const stripBottom = gridOriginY - i * material.effectiveWidth;
              const stripTop = stripBottom - material.effectiveWidth;
              
-             // Пропускаємо смуги, які повністю виходять за межі фігури (з допуском 1мм)
              if (stripBottom <= minY + 1) continue; 
              if (stripTop >= maxY - 1) continue;
 
@@ -1096,7 +1088,6 @@ export default function App() {
            const stripRight = stripLeft + material.effectiveWidth;
            const stripCenter = stripLeft + material.effectiveWidth / 2;
            
-           // Відсікаємо смуги, що лежать чітко поза правою або лівою межею даху
            if (stripLeft >= maxX - 1) continue;
            if (stripRight <= minX + 1) continue;
 
@@ -1116,9 +1107,6 @@ export default function App() {
                          if (currentY + maxValidLength < yMax) {
                              orderedLen = maxValidLength;
                          } else {
-                             // ВІДКОРЕГОВАНИЙ АЛГОРИТМ: Нижні листи вже забезпечили свій нахлест.
-                             // Відстань від фізичного низу (currentY) до вершини (yMax)
-                             // це і є точна фізична довжина шматка, який потрібен.
                              let neededLen = yMax - currentY;
                              orderedLen = fixTileLength(neededLen);
                          }
@@ -1151,7 +1139,6 @@ export default function App() {
 
                         orderedLen = picketH;
                     } else {
-                        // Profile
                         if (currentY + maxLength < yMax) {
                             orderedLen = maxLength;
                         } else {
@@ -1168,9 +1155,9 @@ export default function App() {
                          newSheets.push({
                             id: `s-${i}-${sheetIndex}-${currentY.toFixed(0)}`,
                             x: stripLeft,
-                            y: displayY, // Фізична координата низу листа
+                            y: displayY,
                             width: material.totalWidth,
-                            length: Math.round(orderedLen), // Фізична довжина листа (візуально перекриватимуться на кресленні)
+                            length: Math.round(orderedLen),
                             label: Math.round(orderedLen),
                             fullLength: Math.round(orderedLen),
                             color: COLORS[Math.abs(sheetIndex) % COLORS.length],
@@ -1178,9 +1165,8 @@ export default function App() {
                         });
                     }
 
-                    // Переміщуємось вище для наступного листа
                     if (isTile) {
-                        currentY += stepY; // stepY = maxValidLength - overlap
+                        currentY += stepY;
                     } else if (material.type === 'picket') {
                         currentY += 999999; 
                     } else {
@@ -1771,7 +1757,7 @@ export default function App() {
                             <div className="flex items-center justify-between">
                                 <div className="flex items-center gap-2 text-gray-700">
                                     <Square size={16}/>
-                                    <span className="text-xs">Площа</span>
+                                    <span className="text-xs">Площа схилу</span>
                                 </div>
                                 <span className="text-xs font-bold">{polygonArea.toFixed(2)} м²</span>
                             </div>
@@ -1781,24 +1767,29 @@ export default function App() {
                                     <div className="flex items-center justify-between">
                                         <div className="flex items-center gap-2 text-gray-700">
                                             <LayoutGrid size={16}/>
-                                            <span className="text-xs">Площа листів</span>
+                                            <span className="text-xs">{material.type === 'picket' ? 'Метри погонні' : 'Площа листів'}</span>
                                         </div>
-                                        <span className="text-xs font-bold">{sheetsArea.toFixed(2)} м²</span>
+                                        <span className="text-xs font-bold">
+                                            {material.type === 'picket' ? `${sheetsLinear.toFixed(2)} м.п.` : `${sheetsArea.toFixed(2)} м²`}
+                                        </span>
                                     </div>
+
+                                    {material.type !== 'picket' && (
+                                        <div className="flex items-center justify-between">
+                                            <div className="flex items-center gap-2 text-gray-700">
+                                                <Scissors size={16}/>
+                                                <span className="text-xs">Відходи</span>
+                                            </div>
+                                            <span className={`text-xs font-bold ${wastePercentage > 15 ? 'text-red-500' : 'text-green-600'}`}>
+                                                {wastePercentage.toFixed(1)}%
+                                            </span>
+                                        </div>
+                                    )}
 
                                     <div className="flex items-center justify-between">
                                         <div className="flex items-center gap-2 text-gray-700">
-                                            <Scissors size={16}/>
-                                            <span className="text-xs">Відходи</span>
-                                        </div>
-                                        <span className={`text-xs font-bold ${wastePercentage > 15 ? 'text-red-500' : 'text-green-600'}`}>
-                                            {wastePercentage.toFixed(1)}%
-                                        </span>
-                                    </div>
-                                    <div className="flex items-center justify-between">
-                                        <div className="flex items-center gap-2 text-gray-700">
                                             <Layers size={16}/>
-                                            <span className="text-xs">Листів</span>
+                                            <span className="text-xs">Кількість</span>
                                         </div>
                                         <span className="text-xs font-bold">{sheets.length} шт</span>
                                     </div>
@@ -1823,11 +1814,15 @@ export default function App() {
                         <div className="mt-2 pt-2 border-t border-gray-200">
                              <div className="text-[10px] font-bold text-gray-400 uppercase mb-1">Загалом по проекту</div>
                              <div className="flex justify-between items-center text-xs">
-                                 <span>Площа:</span>
-                                 <span className="font-bold">{totalProjectStats.totalArea.toFixed(1)} м²</span>
+                                 <span>{material.type === 'picket' ? 'Всього м.п.:' : 'Площа:'}</span>
+                                 <span className="font-bold">
+                                     {material.type === 'picket' 
+                                        ? `${totalProjectStats.totalSheetsLinear.toFixed(2)} м.п.` 
+                                        : `${totalProjectStats.totalArea.toFixed(1)} м²`}
+                                 </span>
                              </div>
-                             <div className="flex justify-between items-center text-xs">
-                                 <span>Листів:</span>
+                             <div className="flex justify-between items-center text-xs mt-1">
+                                 <span>Всього листів:</span>
                                  <span className="font-bold">{totalProjectStats.totalSheetsCount} шт</span>
                              </div>
                         </div>
