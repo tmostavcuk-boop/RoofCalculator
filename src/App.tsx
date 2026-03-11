@@ -24,10 +24,10 @@ interface MaterialParams {
   totalWidth: number;
   effectiveWidth: number;
   maxLength: number;
+  minLength?: number;
   gap?: number;
   overlap?: number;
   picketProfile?: PicketProfile;
-  archHeight?: number;
   waveStep?: number;
   waveTail?: number;
 }
@@ -65,7 +65,7 @@ const MATERIAL_PRESETS: Record<MaterialType, MaterialParams> = {
   tile: { type: 'tile', name: 'Металочерепиця', totalWidth: 1180, effectiveWidth: 1100, maxLength: 4000, overlap: 150, waveStep: 350, waveTail: 150 },
   profile: { type: 'profile', name: 'Профнастил', totalWidth: 1160, effectiveWidth: 1100, maxLength: 6000, overlap: 150 },
   siding: { type: 'siding', name: 'Сайдинг', totalWidth: 230, effectiveWidth: 200, maxLength: 3660, overlap: 50 },
-  picket: { type: 'picket', name: 'Штахетник', totalWidth: 115, effectiveWidth: 135, maxLength: 2000, gap: 20, overlap: 0, picketProfile: 'straight', archHeight: 300 }
+  picket: { type: 'picket', name: 'Штахетник', totalWidth: 115, effectiveWidth: 135, maxLength: 2000, minLength: 1700, gap: 20, overlap: 0, picketProfile: 'straight' }
 };
 
 const ROOF_TEMPLATES = [
@@ -343,19 +343,58 @@ export default function App() {
     const isSiding = material.type === 'siding';
     
     const generateSlopeSvg = (slope: RoofSlope) => {
-        const allPoints = [...slope.vertices, ...slope.holes.flat()].map(toSvg);
-        if (allPoints.length === 0) return "";
+        let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+
+        // Збір всіх точок полігону та вирізів для розрахунку області
+        [...slope.vertices, ...slope.holes.flat()].map(toSvg).forEach(p => {
+            if (p.x < minX) minX = p.x;
+            if (p.x > maxX) maxX = p.x;
+            if (p.y < minY) minY = p.y;
+            if (p.y > maxY) maxY = p.y;
+        });
+
+        // ДУЖЕ ВАЖЛИВО: Враховуємо координати листів у bounding box, щоб вони не обрізалися в PDF
+        slope.sheets.forEach(sheet => {
+            const tl = toSvg({ x: sheet.x, y: sheet.y + sheet.length });
+            const br = toSvg({ x: sheet.x + sheet.width, y: sheet.y });
+
+            if (tl.x < minX) minX = tl.x;
+            if (tl.x > maxX) maxX = tl.x;
+            if (tl.y < minY) minY = tl.y;
+            if (tl.y > maxY) maxY = tl.y;
+
+            if (br.x < minX) minX = br.x;
+            if (br.x > maxX) maxX = br.x;
+            if (br.y < minY) minY = br.y;
+            if (br.y > maxY) maxY = br.y;
+        });
+
+        if (minX === Infinity) return "";
         
-        const minX = Math.min(...allPoints.map(p => p.x));
-        const maxX = Math.max(...allPoints.map(p => p.x));
-        const minY = Math.min(...allPoints.map(p => p.y));
-        const maxY = Math.max(...allPoints.map(p => p.y));
-        const width = maxX - minX;
-        const height = maxY - minY;
-        const pX = width * 0.1;
-        const pY = height * 0.1;
-        const viewBox = `${minX - pX} ${minY - pY} ${width + pX * 2} ${height + pY * 2}`;
+        let width = maxX - minX;
+        let height = maxY - minY;
+        if (width === 0) width = 1000;
+        if (height === 0) height = 1000;
+
+        // Збільшено padding для безпечного розміщення обводки і тексту (особливо з правого боку)
+        const pX = Math.max(width * 0.15, 250); 
+        const pY = Math.max(height * 0.15, 250);
         
+        const vbWidth = width + pX * 2;
+        const vbHeight = height + pY * 2;
+        const viewBox = `${minX - pX} ${minY - pY} ${vbWidth} ${vbHeight}`;
+        
+        // Встановлюємо жорсткі розміри у пікселях, щоб html2canvas не розтягував і не обрізав SVG
+        const aspect = vbWidth / vbHeight;
+        let renderH = 380; // Висота, яка поміщається на A4 аркуші 
+        let renderW = renderH * aspect;
+
+        // Зменшено максимальну ширину для більшої гарантії уникнення обрізання html2canvas
+        if (renderW > 680) {
+            renderW = 680;
+            renderH = renderW / aspect;
+        }
+
         const bgPath = `M ${slope.vertices.map(toSvg).map(p => `${p.x} ${p.y}`).join(' L ')} Z ${slope.holes.map(h => `M ${h.map(toSvg).map(p => `${p.x} ${p.y}`).join(' L ')} Z`).join(' ')}`;
         
         const sheetsSvg = slope.sheets.map(sheet => {
@@ -394,7 +433,8 @@ export default function App() {
              <path d="M ${h.map(toSvg).map(p => `${p.x} ${p.y}`).join(' L ')} Z" fill="rgba(239, 68, 68, 0.1)" stroke="#EF4444" stroke-width="10" stroke-dasharray="15,15" />
         `).join('');
 
-        return `<svg viewBox="${viewBox}" style="width:100%; height:100%;" preserveAspectRatio="xMidYMid meet">
+        // Додано overflow: visible
+        return `<svg viewBox="${viewBox}" width="${renderW}" height="${renderH}" style="max-width: 100%; height: auto; display: block; margin: 0 auto; overflow: visible;" preserveAspectRatio="xMidYMid meet">
             <path d="${bgPath}" fill="#F1F5F9" stroke="none" fill-rule="evenodd" />
             ${sheetsSvg}
             <path d="${outlinePath}" fill="none" stroke="#2563EB" stroke-width="8" />
@@ -409,20 +449,16 @@ export default function App() {
         const sArea = getPolyArea(s.vertices) - s.holes.reduce((acc, h) => acc + getPolyArea(h), 0);
         const sSheetsArea = s.sheets.reduce((acc, sh) => acc + (sh.width * sh.length / 1000000), 0);
         
-        // ВРАХУВАННЯ НАХЛЕСТІВ ДЛЯ КОРИСНОЇ ПЛОЩІ: 
-        // корисна ширина * корисна довжина (без ділянок, які йдуть на нахлест)
         const sUsefulArea = s.sheets.reduce((acc, sh) => {
             if (material.type === 'siding') {
                 return acc + (sh.width * material.effectiveWidth) / 1000000;
             } else if (material.type === 'picket') {
                 return acc + (sh.width * sh.length) / 1000000;
             } else {
-                // Металочерепиця або Профнастил
                 const parts = sh.id.split('-');
                 const colId = parts[1];
                 const rowId = parseInt(parts[2], 10);
                 
-                // Перевіряємо, чи є лист вище в цьому ж стовпці (тоді поточний лист втрачає довжину на нахлест)
                 const hasSheetAbove = s.sheets.some(other => {
                     const oParts = other.id.split('-');
                     return oParts[1] === colId && parseInt(oParts[2], 10) === rowId + 1;
@@ -465,7 +501,7 @@ export default function App() {
                 </li>
             </ul>
 
-            <div class="svg-container" style="border: 2px dashed #CBD5E1; border-radius: 8px; padding: 10px; background: white; margin-bottom: 25px;">
+            <div class="svg-container" style="border: 2px dashed #CBD5E1; border-radius: 8px; padding: 15px; background: white; margin-bottom: 25px; text-align: center; box-sizing: border-box; overflow: hidden;">
                 ${svg}
             </div>
             
@@ -497,20 +533,23 @@ export default function App() {
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <title>Специфікація - ${material.name}</title>
         <style>
-          body { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; padding: 25px; color: #1f2937; max-width: 100%; overflow-x: hidden; background: #fff;}
+          body { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; padding: 20px; background: #F1F5F9; margin: 0; color: #1f2937; }
+          
+          /* Фіксований контейнер для коректного рендеру на мобільних і ПК */
+          #pdf-content { width: 800px !important; max-width: 800px !important; margin: 0 auto; background: #fff; padding: 40px; box-sizing: border-box; box-shadow: 0 4px 10px rgba(0,0,0,0.1); border-radius: 8px; }
+          
           .header { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 3px solid #1E3A8A; padding-bottom: 20px; margin-bottom: 30px; }
           h1 { margin: 0; color: #111827; font-size: 28px; }
           .sub-title { color: #6B7280; margin: 5px 0 0 0; font-size: 16px; }
           .meta-box { text-align: right; font-size: 15px; color: #4B5563; }
-          .svg-container { width: 100%; height: 400px; display: flex; justify-content: center; align-items: center; overflow: hidden; page-break-inside: avoid; }
           
           .page-break { page-break-inside: avoid; }
           
-          /* Mobile specific styles for Print Controls */
           @media print {
-            body { padding: 0; }
+            body { background: #fff; padding: 0; margin: 0; }
+            /* ВИДАЛЕНО width: 100%, щоб зберегти жорстку ширину 800px для точного захоплення html2canvas */
+            #pdf-content { box-shadow: none; border-radius: 0; padding: 20px; margin: 0; }
             .no-print { display: none !important; }
-            .page-break { page-break-inside: avoid; margin-bottom: 20px !important; }
           }
           .print-controls {
             position: fixed; bottom: 20px; right: 20px; display: flex; gap: 10px; z-index: 50;
@@ -518,7 +557,7 @@ export default function App() {
           .btn {
             background: #2563EB; color: white; border: none; padding: 12px 20px; 
             border-radius: 50px; font-weight: bold; cursor: pointer; 
-            box-shadow: 0 4px 12px rgba(0,0,0,0.2); display: flex; items-center; gap: 8px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.2); display: flex; align-items: center; gap: 8px;
             font-size: 14px; transition: transform 0.1s;
           }
           .btn:active { transform: scale(0.95); }
@@ -527,24 +566,33 @@ export default function App() {
       </head>
       <body>
         <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+        
         <div class="print-controls no-print">
             <button class="btn btn-close" onclick="window.parent.postMessage('closePreview', '*');">✕ Закрити</button>
             <button class="btn" onclick="sharePDF()" id="pdfBtn">🖨️ Зберегти PDF</button>
         </div>
+        
         <script>
         function sharePDF() {
+            window.scrollTo(0, 0); // Прокручуємо вгору щоб уникнути багів з обрізанням
             var btn = document.getElementById('pdfBtn');
             var originalText = btn.innerHTML;
             btn.innerHTML = '⏳ Формування...';
             var controls = document.querySelector('.print-controls');
             controls.style.display = 'none';
+            
+            var element = document.getElementById('pdf-content');
+            
             var opt = {
                 margin: 10,
                 filename: 'RoofMaster_Spec.pdf',
-                html2canvas: { scale: 2 },
+                image: { type: 'jpeg', quality: 0.98 },
+                // Додано width: 800 для гарантії захоплення точної ширини canvas-ом незалежно від екрану
+                html2canvas: { scale: 2, useCORS: true, logging: false, windowWidth: 800, width: 800 },
                 jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
             };
-            html2pdf().set(opt).from(document.body).output('datauristring').then(function(pdfBase64) {
+            
+            html2pdf().set(opt).from(element).output('datauristring').then(function(pdfBase64) {
                 controls.style.display = 'flex';
                 btn.innerHTML = originalText;
                 window.parent.postMessage({ type: 'PDF_GENERATED', data: pdfBase64 }, '*');
@@ -556,21 +604,26 @@ export default function App() {
         }
         </script>
 
-        <div class="header">
-          <div>
-            <h1>Детальна Специфікація</h1>
-            <p class="sub-title">Згенеровано Roof Master Pro</p>
-          </div>
-          <div class="meta-box">
-            <div><strong>Дата:</strong> ${date}</div>
-            <div><strong>Матеріал:</strong> ${material.name}</div>
-            <div style="font-size: 13px; color: #9CA3AF; margin-top:4px;">
-              Габарити: ${material.totalWidth} мм / ${material.effectiveWidth} мм
-            </div>
+        <!-- Додано обгортку для горизонтального скролу на мобільних -->
+        <div style="width: 100%; overflow-x: auto;">
+          <div id="pdf-content">
+              <div class="header">
+                <div>
+                  <h1>Детальна Специфікація</h1>
+                  <p class="sub-title">Згенеровано Roof Master Pro</p>
+                </div>
+                <div class="meta-box">
+                  <div><strong>Дата:</strong> ${date}</div>
+                  <div><strong>Матеріал:</strong> ${material.name}</div>
+                  <div style="font-size: 13px; color: #9CA3AF; margin-top:4px;">
+                    Габарити: ${material.totalWidth} мм / ${material.effectiveWidth} мм
+                  </div>
+                </div>
+              </div>
+
+              ${slopeSections}
           </div>
         </div>
-
-        ${slopeSections}
 
       </body>
       </html>
@@ -816,6 +869,16 @@ export default function App() {
     setLayoutOffset(prev => ({ x: prev.x + dx, y: prev.y + dy }));
   };
 
+  // Функція для переміщення ВИДІЛЕНИХ листів
+  const moveSelectedSheets = useCallback((dy: number) => {
+      setSheets(prev => prev.map(sheet => {
+          if (selectedSheetIds.includes(sheet.id)) {
+              return { ...sheet, y: sheet.y + dy };
+          }
+          return sheet;
+      }));
+  }, [selectedSheetIds]);
+
   const updateEdgeLength = (newLength: number, lockedPoint: 'p1' | 'p2') => {
     if (selectedEdge === null) return;
     const { polyIndex, vertIndex } = selectedEdge;
@@ -971,15 +1034,16 @@ export default function App() {
 
     if (material.type === 'siding') {
         const gridOriginY = maxY + layoutOffset.y; 
-        const totalHeight = maxY - minY;
-        const endRow = Math.ceil(totalHeight / material.effectiveWidth) + 2; 
+        const startRow = Math.floor((gridOriginY - maxY) / material.effectiveWidth) - 1;
+        const endRow = Math.ceil((gridOriginY - minY) / material.effectiveWidth) + 1;
 
-        for (let i = 0; i <= endRow; i++) {
+        for (let i = startRow; i <= endRow; i++) {
              const stripBottom = gridOriginY - i * material.effectiveWidth;
              const stripTop = stripBottom - material.effectiveWidth;
              
-             if (stripBottom < minY && stripTop < minY) continue; 
-             if (stripTop > maxY && stripBottom > maxY) continue;
+             // Пропускаємо смуги, які повністю виходять за межі фігури (з допуском 1мм)
+             if (stripBottom <= minY + 1) continue; 
+             if (stripTop >= maxY - 1) continue;
 
              const segments = getMergedSegments(stripTop, stripBottom, false);
              const panelOriginX = minX + layoutOffset.x;
@@ -1032,6 +1096,10 @@ export default function App() {
            const stripRight = stripLeft + material.effectiveWidth;
            const stripCenter = stripLeft + material.effectiveWidth / 2;
            
+           // Відсікаємо смуги, що лежать чітко поза правою або лівою межею даху
+           if (stripLeft >= maxX - 1) continue;
+           if (stripRight <= minX + 1) continue;
+
            const segments = getMergedSegments(stripLeft, stripRight, true);
 
            segments.forEach(([yMin, yMax]) => {
@@ -1062,7 +1130,9 @@ export default function App() {
                         if (material.picketProfile && material.picketProfile !== 'straight') {
                             const dist = Math.abs(stripCenter - realCenterX); 
                             const W = realFenceWidth; 
-                            const H = material.archHeight || 0; 
+                            const maxH = material.maxLength || 0;
+                            const minH = material.minLength ?? maxH;
+                            const H = Math.max(0, maxH - minH); 
                             
                             if (H > 0 && W > 0) {
                                 const R = (H / 2) + ((W * W) / (8 * H));
@@ -1130,6 +1200,37 @@ export default function App() {
       }
   }, [layoutOffset, step, activeSlopeId]); 
 
+  // --- Пересування листів стрілками (Клавіатура) ---
+  useEffect(() => {
+      const handleKeyDown = (e: KeyboardEvent) => {
+          if (['INPUT', 'TEXTAREA'].includes((document.activeElement as HTMLElement)?.tagName || '')) return;
+
+          if (step === 'layout' && selectedSheetIds.length > 0) {
+              if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key)) {
+                  e.preventDefault(); 
+                  const moveStep = e.shiftKey ? 50 : 10; 
+                  let dx = 0;
+                  let dy = 0;
+
+                  if (e.key === 'ArrowUp') dy = moveStep;
+                  if (e.key === 'ArrowDown') dy = -moveStep;
+                  if (e.key === 'ArrowLeft') dx = -moveStep;
+                  if (e.key === 'ArrowRight') dx = moveStep;
+
+                  setSheets(prev => prev.map(sheet => {
+                      if (selectedSheetIds.includes(sheet.id)) {
+                          return { ...sheet, x: sheet.x + dx, y: sheet.y + dy };
+                      }
+                      return sheet;
+                  }));
+              }
+          }
+      };
+
+      window.addEventListener('keydown', handleKeyDown);
+      return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [step, selectedSheetIds, setSheets]);
+
   const rotateShape = (direction: 'cw' | 'ccw') => {
       const allPoints = [...vertices, ...holes.flat()];
       if (allPoints.length === 0) return;
@@ -1174,6 +1275,23 @@ export default function App() {
           holes: [],
           sheets: [],
           layoutOffset: { x: 0, y: 0 }
+      }]);
+      setActiveSlopeId(newId);
+  };
+
+  const duplicateSlope = (e: React.MouseEvent, id: string) => {
+      e.stopPropagation();
+      const source = slopes.find(s => s.id === id);
+      if (!source) return;
+      const newId = `slope-${Date.now()}`;
+      setSlopes(prev => [...prev, {
+          ...source,
+          id: newId,
+          name: `${source.name} (Копія)`,
+          vertices: source.vertices.map(v => ({...v})),
+          holes: source.holes.map(h => h.map(v => ({...v}))),
+          sheets: source.sheets.map(s => ({...s, id: s.id + '-copy'})),
+          layoutOffset: { ...source.layoutOffset }
       }]);
       setActiveSlopeId(newId);
   };
@@ -1352,8 +1470,8 @@ export default function App() {
                          
                          {material.picketProfile !== 'straight' && (
                              <div>
-                                <label className="text-[10px] text-gray-500 font-bold uppercase block mb-1">Глибина арки (см)</label>
-                                <input type="number" value={(material.archHeight || 0) / 10} onChange={(e) => setMaterial(prev => ({...prev, archHeight: +e.target.value * 10}))} className="w-full border rounded-lg p-2 text-lg font-bold bg-gray-50"/>
+                                <label className="text-[10px] text-gray-500 font-bold uppercase block mb-1">Мін. висота (см)</label>
+                                <input type="number" value={(material.minLength || 0) / 10} onChange={(e) => setMaterial(prev => ({...prev, minLength: +e.target.value * 10}))} className="w-full border rounded-lg p-2 text-lg font-bold bg-gray-50"/>
                              </div>
                          )}
                     </div>
@@ -1611,21 +1729,26 @@ export default function App() {
                          <span className="flex items-center gap-1">
                              {slope.name}
                              {activeSlopeId === slope.id && (
-                                <button onClick={(e) => { e.stopPropagation(); startRenameSlope(); }} className="p-0.5 hover:bg-blue-100 rounded text-blue-400 hover:text-blue-600">
-                                    <Edit2 size={10}/>
-                                </button>
+                                <>
+                                    <button onClick={(e) => { e.stopPropagation(); startRenameSlope(); }} className="p-0.5 hover:bg-blue-100 rounded text-blue-400 hover:text-blue-600" title="Перейменувати">
+                                        <Edit2 size={10}/>
+                                    </button>
+                                    <button onClick={(e) => duplicateSlope(e, slope.id)} className="p-0.5 hover:bg-green-100 rounded text-green-500 hover:text-green-600" title="Копіювати схил">
+                                        <Copy size={10}/>
+                                    </button>
+                                </>
                              )}
                          </span>
                      )}
                      
                      {slopes.length > 1 && (
-                         <button onClick={(e) => removeSlope(e, slope.id)} className="p-0.5 hover:bg-red-100 rounded text-gray-400 hover:text-red-500">
+                         <button onClick={(e) => removeSlope(e, slope.id)} className="p-0.5 hover:bg-red-100 rounded text-gray-400 hover:text-red-500" title="Видалити">
                              <X size={12}/>
                          </button>
                      )}
                  </div>
              ))}
-             <button onClick={addSlope} className="px-2 py-1 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded">
+             <button onClick={addSlope} className="px-2 py-1 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded" title="Додати схил">
                  <Plus size={16}/>
              </button>
          </div>
@@ -1633,9 +1756,9 @@ export default function App() {
 
       {/* CANVAS */}
       <main className="flex-1 relative overflow-hidden bg-gray-100 touch-none w-full">
-          
-          {/* STATS PANEL */}
-          {step !== 'material' && (
+         
+         {/* STATS PANEL */}
+         {step !== 'material' && (
              <div className="absolute top-4 left-4 z-40">
                 {isStatsOpen ? (
                     <div className="bg-white/90 backdrop-blur-md shadow-lg rounded-xl border border-gray-200 p-3 w-48 transition-all animate-in fade-in slide-in-from-left-4">
@@ -1719,317 +1842,317 @@ export default function App() {
                     </button>
                 )}
              </div>
-          )}
+         )}
 
-          {/* LAYOUT MOVER CONTROLS */}
-          {step === 'layout' && (
-              <div className="absolute bottom-4 right-4 z-40 flex flex-col items-center gap-1 bg-white/90 p-2 rounded-xl shadow-lg border border-gray-200 backdrop-blur-sm">
-                  <span className="text-[10px] font-bold text-gray-400 uppercase mb-1">Зсув (1см)</span>
-                  <button onClick={() => moveLayout(0, -10)} className="p-2 bg-gray-100 hover:bg-gray-200 rounded-lg active:bg-gray-300 transition" title="Вгору">
-                    <ArrowUp size={20} className="text-gray-700"/>
-                  </button>
-                  <div className="flex gap-1">
-                      <button onClick={() => moveLayout(-10, 0)} className="p-2 bg-gray-100 hover:bg-gray-200 rounded-lg active:bg-gray-300 transition" title="Вліво">
-                        <ArrowLeft size={20} className="text-gray-700"/>
-                      </button>
-                      <button onClick={() => moveLayout(10, 0)} className="p-2 bg-gray-100 hover:bg-gray-200 rounded-lg active:bg-gray-300 transition" title="Вправо">
-                        <ArrowRight size={20} className="text-gray-700"/>
-                      </button>
-                  </div>
-                  <button onClick={() => moveLayout(0, 10)} className="p-2 bg-gray-100 hover:bg-gray-200 rounded-lg active:bg-gray-300 transition" title="Вниз">
-                    <ArrowDown size={20} className="text-gray-700"/>
-                  </button>
-              </div>
-          )}
+         {/* LAYOUT MOVER CONTROLS */}
+         {step === 'layout' && (
+             <div className="absolute bottom-4 right-4 z-40 flex flex-col items-center gap-1 bg-white/90 p-2 rounded-xl shadow-lg border border-gray-200 backdrop-blur-sm">
+                 <span className="text-[10px] font-bold text-gray-400 uppercase mb-1">Зсув (1см)</span>
+                 <button onClick={() => moveLayout(0, -10)} className="p-2 bg-gray-100 hover:bg-gray-200 rounded-lg active:bg-gray-300 transition" title="Вгору">
+                   <ArrowUp size={20} className="text-gray-700"/>
+                 </button>
+                 <div className="flex gap-1">
+                     <button onClick={() => moveLayout(-10, 0)} className="p-2 bg-gray-100 hover:bg-gray-200 rounded-lg active:bg-gray-300 transition" title="Вліво">
+                       <ArrowLeft size={20} className="text-gray-700"/>
+                     </button>
+                     <button onClick={() => moveLayout(10, 0)} className="p-2 bg-gray-100 hover:bg-gray-200 rounded-lg active:bg-gray-300 transition" title="Вправо">
+                       <ArrowRight size={20} className="text-gray-700"/>
+                     </button>
+                 </div>
+                 <button onClick={() => moveLayout(0, 10)} className="p-2 bg-gray-100 hover:bg-gray-200 rounded-lg active:bg-gray-300 transition" title="Вниз">
+                   <ArrowDown size={20} className="text-gray-700"/>
+                 </button>
+             </div>
+         )}
 
-          <div 
-            ref={containerRef}
-            className="absolute inset-0 w-full h-full cursor-crosshair"
-            onPointerDown={(e) => handlePointerDown(e, 'bg')}
-            onPointerMove={handlePointerMove}
-            onPointerUp={handlePointerUp}
-            onPointerLeave={handlePointerUp}
-          >
-            <div className="absolute top-4 right-4 flex flex-col gap-2 z-40">
-               <button onClick={handleZoomIn} className="p-3 bg-white shadow-md rounded-full text-blue-600 active:bg-blue-50">
-                  <Plus size={24}/>
-               </button>
-               <button onClick={handleZoomOut} className="p-3 bg-white shadow-md rounded-full text-blue-600 active:bg-blue-50">
-                  <Minus size={24}/>
-               </button>
-               <button onClick={fitView} className="p-3 bg-white shadow-md rounded-full text-blue-600 active:bg-blue-50 mt-2">
-                  <Focus size={24}/>
-               </button>
-            </div>
+         <div 
+           ref={containerRef}
+           className="absolute inset-0 w-full h-full cursor-crosshair"
+           onPointerDown={(e) => handlePointerDown(e, 'bg')}
+           onPointerMove={handlePointerMove}
+           onPointerUp={handlePointerUp}
+           onPointerLeave={handlePointerUp}
+         >
+           <div className="absolute top-4 right-4 flex flex-col gap-2 z-40">
+              <button onClick={handleZoomIn} className="p-3 bg-white shadow-md rounded-full text-blue-600 active:bg-blue-50">
+                 <Plus size={24}/>
+              </button>
+              <button onClick={handleZoomOut} className="p-3 bg-white shadow-md rounded-full text-blue-600 active:bg-blue-50">
+                 <Minus size={24}/>
+              </button>
+              <button onClick={fitView} className="p-3 bg-white shadow-md rounded-full text-blue-600 active:bg-blue-50 mt-2">
+                 <Focus size={24}/>
+              </button>
+           </div>
 
-            <svg className="absolute inset-0 w-full h-full" style={{ overflow: 'visible' }}>
-              <defs>
-                  <GridBackground />
-                  <clipPath id="slope-clip">
-                      <path d={slopePath} clipRule="evenodd" />
-                  </clipPath>
-              </defs>
-              <g ref={canvasRef} style={{ transformOrigin: '0 0', willChange: 'transform' }}>
-                  <rect x="-10000" y="-10000" width="20000" height="20000" fill="url(#grid)" />
-                  
-                  {/* --- AXES (Visual Guides) --- */}
-                  <line x1="-10000" y1="0" x2="10000" y2="0" stroke="#EF4444" strokeWidth="3" strokeOpacity="0.5" /> 
-                  <line x1="0" y1="-10000" x2="0" y2="10000" stroke="#10B981" strokeWidth="3" strokeOpacity="0.5" /> 
+           <svg className="absolute inset-0 w-full h-full" style={{ overflow: 'visible' }}>
+             <defs>
+                 <GridBackground />
+                 <clipPath id="slope-clip">
+                     <path d={slopePath} clipRule="evenodd" />
+                 </clipPath>
+             </defs>
+             <g ref={canvasRef} style={{ transformOrigin: '0 0', willChange: 'transform' }}>
+                 <rect x="-10000" y="-10000" width="20000" height="20000" fill="url(#grid)" />
+                 
+                 {/* --- AXES (Visual Guides) --- */}
+                 <line x1="-10000" y1="0" x2="10000" y2="0" stroke="#EF4444" strokeWidth="3" strokeOpacity="0.5" /> 
+                 <line x1="0" y1="-10000" x2="0" y2="10000" stroke="#10B981" strokeWidth="3" strokeOpacity="0.5" /> 
 
-                  {/* --- 1. Background Fill (Bottom Layer) --- */}
-                  <path 
-                    d={slopePath}
-                    fill="#94A3B8" stroke="none" fillRule="evenodd" opacity="0.5"
-                  />
-                  
-                  {/* --- 2. Sheets (Middle Layer) --- */}
-                  <g>
-                    {step === 'layout' && sheets.map(sheet => {
-                        const svgPos = toSvg({x: sheet.x, y: sheet.y + sheet.length});
-                        const isSiding = material.type === 'siding';
-                        const isPicket = material.type === 'picket';
-                        const isSelected = selectedSheetIds.includes(sheet.id);
-                        const strokeW = isSelected ? 25 : (isSiding ? 2 : 5);
-                        
-                        const rotateText = !isSiding; 
-                        const cx = sheet.width / 2;
-                        const cy = sheet.length / 2;
+                 {/* --- 1. Background Fill (Bottom Layer) --- */}
+                 <path 
+                   d={slopePath}
+                   fill="#94A3B8" stroke="none" fillRule="evenodd" opacity="0.5"
+                 />
+                 
+                 {/* --- 2. Sheets (Middle Layer) --- */}
+                 <g>
+                   {step === 'layout' && sheets.map(sheet => {
+                       const svgPos = toSvg({x: sheet.x, y: sheet.y + sheet.length});
+                       const isSiding = material.type === 'siding';
+                       const isPicket = material.type === 'picket';
+                       const isSelected = selectedSheetIds.includes(sheet.id);
+                       const strokeW = isSelected ? 25 : (isSiding ? 2 : 5);
+                       
+                       const rotateText = !isSiding; 
+                       const cx = sheet.width / 2;
+                       const cy = sheet.length / 2;
 
-                        let fontSize = 150;
-                        if (isSiding) {
-                            fontSize = sheet.length * 0.4;
-                        } else if (isPicket) {
-                            fontSize = Math.min(sheet.length * 0.4, 140); 
-                        } else {
-                            fontSize = Math.min(sheet.length * 0.3, sheet.width * 0.25);
-                            if (fontSize < 150) fontSize = 150; 
-                        }
+                       let fontSize = 150;
+                       if (isSiding) {
+                           fontSize = sheet.length * 0.4;
+                       } else if (isPicket) {
+                           fontSize = Math.min(sheet.length * 0.4, 140); 
+                       } else {
+                           fontSize = Math.min(sheet.length * 0.3, sheet.width * 0.25);
+                           if (fontSize < 150) fontSize = 150; 
+                       }
 
-                        const labelText = sheet.label.toString();
+                       const labelText = sheet.label.toString();
 
-                        return (
-                            <g key={sheet.id} transform={`translate(${svgPos.x}, ${svgPos.y})`}
-                              onPointerDown={(e) => handlePointerDown(e, 'sheet', sheet.id)}
-                            >
-                              <rect 
-                                width={sheet.width} 
-                                height={sheet.length} 
-                                fill={sheet.color} 
-                                fillOpacity={0.2} 
-                                stroke={isSelected ? '#F97316' : '#EF4444'} 
-                                strokeWidth={strokeW} 
-                                strokeDasharray={isSelected ? 'none' : '20,10'}
-                              />
-                              <g transform={`translate(${cx}, ${cy}) rotate(${rotateText ? -90 : 0})`}>
-                                  <text 
-                                    textAnchor="middle" 
-                                    dominantBaseline="central"
-                                    fontSize={fontSize}
-                                    fontWeight="bold"
-                                    stroke="white"
-                                    strokeWidth={fontSize * 0.1}
-                                    fill="none"
-                                    className="pointer-events-none"
-                                  >
-                                    {labelText}
-                                  </text>
-                                  <text 
-                                    textAnchor="middle" 
-                                    dominantBaseline="central"
-                                    fontSize={fontSize}
-                                    fontWeight="bold"
-                                    fill={isSelected ? '#C2410C' : '#7F1D1D'}
-                                    className="pointer-events-none"
-                                  >
-                                    {labelText}
-                                  </text>
-                              </g>
-                            </g>
-                        )
-                    })}
-                  </g>
-                  
-                  {/* --- 3. Outlines and Highlights (Top Layer) --- */}
-                  <path 
-                    d={`M ${vertices.map(toSvg).map(p => `${p.x} ${p.y}`).join(' L ')} Z`}
-                    fill="none" stroke="#2563EB" strokeWidth="5" vectorEffect="non-scaling-stroke"
-                  />
-                  
-                  {holes.map((hole, hi) => (
-                    <g key={`hg-${hi}`}>
-                      <path 
-                        d={`M ${hole.map(toSvg).map(p => `${p.x} ${p.y}`).join(' L ')} Z`}
-                        fill="rgba(239, 68, 68, 0.2)" stroke="#EF4444" strokeWidth="4" strokeDasharray="10,10" vectorEffect="non-scaling-stroke"
-                      />
-                      {step === 'geometry' && (() => {
-                          const center = getCentroid(hole);
-                          const centerSvg = toSvg(center);
-                          const isSelected = selectedHoleIndex === hi;
-                          const fs = pointRadius * 1.5;
-                          return (
-                              <g 
-                                transform={`translate(${centerSvg.x}, ${centerSvg.y})`}
-                                onPointerDown={(e) => handlePointerDown(e, 'hole-move', hi)}
-                                className="cursor-move"
-                              >
-                                  <circle r={fs} fill={isSelected ? "#EF4444" : "white"} stroke="#DC2626" strokeWidth="4" />
-                                  <Move size={fs} x={-fs/2} y={-fs/2} color={isSelected ? "white" : "#DC2626"} />
-                              </g>
-                          )
-                      })()}
-                    </g>
-                  ))}
+                       return (
+                           <g key={sheet.id} transform={`translate(${svgPos.x}, ${svgPos.y})`}
+                             onPointerDown={(e) => handlePointerDown(e, 'sheet', sheet.id)}
+                           >
+                             <rect 
+                               width={sheet.width} 
+                               height={sheet.length} 
+                               fill={sheet.color} 
+                               fillOpacity={0.2} 
+                               stroke={isSelected ? '#F97316' : '#EF4444'} 
+                               strokeWidth={strokeW} 
+                               strokeDasharray={isSelected ? 'none' : '20,10'}
+                             />
+                             <g transform={`translate(${cx}, ${cy}) rotate(${rotateText ? -90 : 0})`}>
+                                 <text 
+                                   textAnchor="middle" 
+                                   dominantBaseline="central"
+                                   fontSize={fontSize}
+                                   fontWeight="bold"
+                                   stroke="white"
+                                   strokeWidth={fontSize * 0.1}
+                                   fill="none"
+                                   className="pointer-events-none"
+                                 >
+                                   {labelText}
+                                 </text>
+                                 <text 
+                                   textAnchor="middle" 
+                                   dominantBaseline="central"
+                                   fontSize={fontSize}
+                                   fontWeight="bold"
+                                   fill={isSelected ? '#C2410C' : '#7F1D1D'}
+                                   className="pointer-events-none"
+                                 >
+                                   {labelText}
+                                 </text>
+                             </g>
+                           </g>
+                       )
+                   })}
+                 </g>
+                 
+                 {/* --- 3. Outlines and Highlights (Top Layer) --- */}
+                 <path 
+                   d={`M ${vertices.map(toSvg).map(p => `${p.x} ${p.y}`).join(' L ')} Z`}
+                   fill="none" stroke="#2563EB" strokeWidth="5" vectorEffect="non-scaling-stroke"
+                 />
+                 
+                 {holes.map((hole, hi) => (
+                   <g key={`hg-${hi}`}>
+                     <path 
+                       d={`M ${hole.map(toSvg).map(p => `${p.x} ${p.y}`).join(' L ')} Z`}
+                       fill="rgba(239, 68, 68, 0.2)" stroke="#EF4444" strokeWidth="4" strokeDasharray="10,10" vectorEffect="non-scaling-stroke"
+                     />
+                     {step === 'geometry' && (() => {
+                         const center = getCentroid(hole);
+                         const centerSvg = toSvg(center);
+                         const isSelected = selectedHoleIndex === hi;
+                         const fs = pointRadius * 1.5;
+                         return (
+                             <g 
+                               transform={`translate(${centerSvg.x}, ${centerSvg.y})`}
+                               onPointerDown={(e) => handlePointerDown(e, 'hole-move', hi)}
+                               className="cursor-move"
+                             >
+                                 <circle r={fs} fill={isSelected ? "#EF4444" : "white"} stroke="#DC2626" strokeWidth="4" />
+                                 <Move size={fs} x={-fs/2} y={-fs/2} color={isSelected ? "white" : "#DC2626"} />
+                             </g>
+                         )
+                     })()}
+                   </g>
+                 ))}
 
-                  {step === 'geometry' && vertices.map((p, i) => {
-                    const svgP = toSvg(p);
-                    const isSelected = selectedVertex?.polyIndex === -1 && selectedVertex?.vertIndex === i;
-                    return (
-                        <g key={`v-${i}`} transform={`translate(${svgP.x}, ${svgP.y})`}
-                            onPointerDown={(e) => handlePointerDown(e, 'vertex', { polyIndex: -1, vertIndex: i })}
-                        >
-                            <circle r={pointRadius * 3} fill="transparent" /> 
-                            <circle r={pointRadius * (isSelected ? 1.2 : 0.8)} fill={isSelected ? "#16A34A" : "white"} stroke={isSelected ? "#15803D" : "#2563EB"} strokeWidth={pointRadius*0.3} />
-                            <text y={-pointRadius*1.5} textAnchor="middle" fill={isSelected ? "#15803D" : "#2563EB"} fontSize={pointRadius*1.2} fontWeight="bold" className="pointer-events-none">{i+1}</text>
-                        </g>
-                    )
-                  })}
+                 {step === 'geometry' && vertices.map((p, i) => {
+                   const svgP = toSvg(p);
+                   const isSelected = selectedVertex?.polyIndex === -1 && selectedVertex?.vertIndex === i;
+                   return (
+                       <g key={`v-${i}`} transform={`translate(${svgP.x}, ${svgP.y})`}
+                           onPointerDown={(e) => handlePointerDown(e, 'vertex', { polyIndex: -1, vertIndex: i })}
+                       >
+                           <circle r={pointRadius * 3} fill="transparent" /> 
+                           <circle r={pointRadius * (isSelected ? 1.2 : 0.8)} fill={isSelected ? "#16A34A" : "white"} stroke={isSelected ? "#15803D" : "#2563EB"} strokeWidth={pointRadius*0.3} />
+                           <text y={-pointRadius*1.5} textAnchor="middle" fill={isSelected ? "#15803D" : "#2563EB"} fontSize={pointRadius*1.2} fontWeight="bold" className="pointer-events-none">{i+1}</text>
+                       </g>
+                   )
+                 })}
 
-                  {step === 'geometry' && holes.map((hole, hi) => (
-                      hole.map((p, i) => {
-                        const svgP = toSvg(p);
-                        const isSelected = selectedVertex?.polyIndex === hi && selectedVertex?.vertIndex === i;
-                        return (
-                            <g key={`h-${hi}-${i}`} transform={`translate(${svgP.x}, ${svgP.y})`}
-                                onPointerDown={(e) => handlePointerDown(e, 'vertex', { polyIndex: hi, vertIndex: i })}
-                            >
-                                <circle r={pointRadius * 3} fill="transparent" /> 
-                                <circle r={pointRadius * (isSelected ? 1.2 : 0.8)} fill={isSelected ? "#16A34A" : "white"} stroke={isSelected ? "#15803D" : "#EF4444"} strokeWidth={pointRadius*0.3} />
-                            </g>
-                        )
-                      })
-                  ))}
+                 {step === 'geometry' && holes.map((hole, hi) => (
+                     hole.map((p, i) => {
+                       const svgP = toSvg(p);
+                       const isSelected = selectedVertex?.polyIndex === hi && selectedVertex?.vertIndex === i;
+                       return (
+                           <g key={`h-${hi}-${i}`} transform={`translate(${svgP.x}, ${svgP.y})`}
+                               onPointerDown={(e) => handlePointerDown(e, 'vertex', { polyIndex: hi, vertIndex: i })}
+                           >
+                               <circle r={pointRadius * 3} fill="transparent" /> 
+                               <circle r={pointRadius * (isSelected ? 1.2 : 0.8)} fill={isSelected ? "#16A34A" : "white"} stroke={isSelected ? "#15803D" : "#EF4444"} strokeWidth={pointRadius*0.3} />
+                           </g>
+                       )
+                     })
+                 ))}
 
-                  {step === 'geometry' && vertices.map((p, i) => {
-                    const next = vertices[(i+1)%vertices.length];
-                    const svgP = toSvg(p);
-                    const svgNext = toSvg(next);
-                    const mx = (svgP.x+svgNext.x)/2;
-                    const my = (svgP.y+svgNext.y)/2;
-                    const dist = Math.hypot(next.x-p.x, next.y-p.y);
-                    const fs = pointRadius * 1.0;
-                    const isSelected = selectedEdge?.polyIndex === -1 && selectedEdge?.vertIndex === i;
-                    return (
-                      <g 
-                        key={`d-${i}`} 
-                        onClick={(e) => { 
-                            e.stopPropagation(); 
-                            setSelectedEdge({ polyIndex: -1, vertIndex: i }); 
-                            setIsEditingHeight(false);
-                            setSelectedVertex(null);
-                            setManualLength(Math.round(dist).toString());
-                        }}
-                        className="cursor-pointer hover:opacity-80"
-                      >
-                          <rect 
-                            x={mx - fs*2.5} y={my - fs/1.2} 
-                            width={fs*5} height={fs*1.8} 
-                            rx={fs/2} 
-                            fill={isSelected ? "#2563EB" : "white"} 
-                            stroke={isSelected ? "#1D4ED8" : "#CBD5E1"} 
-                            strokeWidth="5"
-                          />
-                          <text 
-                            x={mx} y={my + fs/2.5} 
-                            textAnchor="middle" 
-                            fontSize={fs} 
-                            fill={isSelected ? "white" : "#1E293B"} 
-                            fontWeight="bold"
-                          >
-                            {Math.round(dist)}
-                          </text>
-                      </g>
-                    )
-                  })}
-                  
-                  {step === 'geometry' && (() => {
-                      const ys = vertices.map(p => p.y);
-                      const minY = Math.min(...ys);
-                      const maxY = Math.max(...ys);
-                      const xs = vertices.map(p => p.x);
-                      const minX = Math.min(...xs);
-                      const maxX = Math.max(...xs);
-                      const centerX = (minX + maxX) / 2;
-                      const height = maxY - minY;
-                      const fs = pointRadius * 1.0;
-                      
-                      const svgTop = toSvg({x: centerX, y: maxY});
-                      const svgBottom = toSvg({x: centerX, y: minY});
-                      
-                      return (
-                          <g 
-                            onClick={(e) => {
-                                e.stopPropagation();
-                                setIsEditingHeight(true);
-                                setSelectedEdge(null);
-                                setSelectedVertex(null);
-                                setManualLength(Math.round(height).toString());
-                            }}
-                            className="cursor-pointer hover:opacity-80 group"
-                          >
+                 {step === 'geometry' && vertices.map((p, i) => {
+                   const next = vertices[(i+1)%vertices.length];
+                   const svgP = toSvg(p);
+                   const svgNext = toSvg(next);
+                   const mx = (svgP.x+svgNext.x)/2;
+                   const my = (svgP.y+svgNext.y)/2;
+                   const dist = Math.hypot(next.x-p.x, next.y-p.y);
+                   const fs = pointRadius * 1.0;
+                   const isSelected = selectedEdge?.polyIndex === -1 && selectedEdge?.vertIndex === i;
+                   return (
+                     <g 
+                       key={`d-${i}`} 
+                       onClick={(e) => { 
+                           e.stopPropagation(); 
+                           setSelectedEdge({ polyIndex: -1, vertIndex: i }); 
+                           setIsEditingHeight(false);
+                           setSelectedVertex(null);
+                           setManualLength(Math.round(dist).toString());
+                       }}
+                       className="cursor-pointer hover:opacity-80"
+                     >
+                         <rect 
+                           x={mx - fs*2.5} y={my - fs/1.2} 
+                           width={fs*5} height={fs*1.8} 
+                           rx={fs/2} 
+                           fill={isSelected ? "#2563EB" : "white"} 
+                           stroke={isSelected ? "#1D4ED8" : "#CBD5E1"} 
+                           strokeWidth="5"
+                         />
+                         <text 
+                           x={mx} y={my + fs/2.5} 
+                           textAnchor="middle" 
+                           fontSize={fs} 
+                           fill={isSelected ? "white" : "#1E293B"} 
+                           fontWeight="bold"
+                         >
+                           {Math.round(dist)}
+                         </text>
+                     </g>
+                   )
+                 })}
+                 
+                 {step === 'geometry' && (() => {
+                     const ys = vertices.map(p => p.y);
+                     const minY = Math.min(...ys);
+                     const maxY = Math.max(...ys);
+                     const xs = vertices.map(p => p.x);
+                     const minX = Math.min(...xs);
+                     const maxX = Math.max(...xs);
+                     const centerX = (minX + maxX) / 2;
+                     const height = maxY - minY;
+                     const fs = pointRadius * 1.0;
+                     
+                     const svgTop = toSvg({x: centerX, y: maxY});
+                     const svgBottom = toSvg({x: centerX, y: minY});
+                     
+                     return (
+                         <g 
+                           onClick={(e) => {
+                               e.stopPropagation();
+                               setIsEditingHeight(true);
+                               setSelectedEdge(null);
+                               setSelectedVertex(null);
+                               setManualLength(Math.round(height).toString());
+                           }}
+                           className="cursor-pointer hover:opacity-80 group"
+                         >
                              <line 
-                                x1={centerX} y1={svgBottom.y} 
-                                x2={centerX} y2={svgTop.y} 
-                                stroke={isEditingHeight ? "#8B5CF6" : "#A78BFA"} 
-                                strokeWidth="4" 
-                                strokeDasharray="20,20"
+                               x1={centerX} y1={svgBottom.y} 
+                               x2={centerX} y2={svgTop.y} 
+                               stroke={isEditingHeight ? "#8B5CF6" : "#A78BFA"} 
+                               strokeWidth="4" 
+                               strokeDasharray="20,20"
                              />
                              <path d={`M ${centerX} ${svgBottom.y} L ${centerX-15} ${svgBottom.y-30} L ${centerX+15} ${svgBottom.y-30} Z`} fill={isEditingHeight ? "#8B5CF6" : "#A78BFA"} />
                              <path d={`M ${centerX} ${svgTop.y} L ${centerX-15} ${svgTop.y+30} L ${centerX+15} ${svgTop.y+30} Z`} fill={isEditingHeight ? "#8B5CF6" : "#A78BFA"} />
                              
                              <rect 
-                                x={centerX - fs*3} y={(svgTop.y+svgBottom.y)/2 - fs} 
-                                width={fs*6} height={fs*2} 
-                                rx={fs/2} 
-                                fill={isEditingHeight ? "#8B5CF6" : "white"} 
-                                stroke={isEditingHeight ? "#7C3AED" : "#C4B5FD"} 
-                                strokeWidth="5"
+                               x={centerX - fs*3} y={(svgTop.y+svgBottom.y)/2 - fs} 
+                               width={fs*6} height={fs*2} 
+                               rx={fs/2} 
+                               fill={isEditingHeight ? "#8B5CF6" : "white"} 
+                               stroke={isEditingHeight ? "#7C3AED" : "#C4B5FD"} 
+                               strokeWidth="5"
                              />
                              <text 
-                                x={centerX} y={(svgTop.y+svgBottom.y)/2 + fs/2.5} 
-                                textAnchor="middle" 
-                                fontSize={fs} 
-                                fill={isEditingHeight ? "white" : "#6D28D9"} 
-                                fontWeight="bold"
-                                className="flex items-center"
+                               x={centerX} y={(svgTop.y+svgBottom.y)/2 + fs/2.5} 
+                               textAnchor="middle" 
+                               fontSize={fs} 
+                               fill={isEditingHeight ? "white" : "#6D28D9"} 
+                               fontWeight="bold"
+                               className="flex items-center"
                              >
                                 {Math.round(height)}
                              </text>
-                          </g>
-                      );
-                  })()}
+                         </g>
+                     );
+                 })()}
 
-                  {step === 'geometry' && holes.map((hole, hi) => (
-                      hole.map((p, i) => {
-                        const next = hole[(i+1)%hole.length];
-                        const svgP = toSvg(p);
-                        const svgNext = toSvg(next);
-                        const mx = (svgP.x+svgNext.x)/2;
-                        const my = (svgP.y+svgNext.y)/2;
-                        const dist = Math.hypot(next.x-p.x, next.y-p.y);
-                        const fs = pointRadius * 0.8;
-                        const isSelected = selectedEdge?.polyIndex === hi && selectedEdge?.vertIndex === i;
-                        return (
-                          <g 
-                            key={`hd-${hi}-${i}`} 
-                            onClick={(e) => { 
-                                e.stopPropagation(); 
-                                setSelectedEdge({ polyIndex: hi, vertIndex: i }); 
-                                setIsEditingHeight(false);
-                                setSelectedVertex(null);
-                                setManualLength(Math.round(dist).toString());
-                            }}
-                            className="cursor-pointer hover:opacity-80"
-                          >
+                 {step === 'geometry' && holes.map((hole, hi) => (
+                     hole.map((p, i) => {
+                       const next = hole[(i+1)%hole.length];
+                       const svgP = toSvg(p);
+                       const svgNext = toSvg(next);
+                       const mx = (svgP.x+svgNext.x)/2;
+                       const my = (svgP.y+svgNext.y)/2;
+                       const dist = Math.hypot(next.x-p.x, next.y-p.y);
+                       const fs = pointRadius * 0.8;
+                       const isSelected = selectedEdge?.polyIndex === hi && selectedEdge?.vertIndex === i;
+                       return (
+                         <g 
+                           key={`hd-${hi}-${i}`} 
+                           onClick={(e) => { 
+                               e.stopPropagation(); 
+                               setSelectedEdge({ polyIndex: hi, vertIndex: i }); 
+                               setIsEditingHeight(false);
+                               setSelectedVertex(null);
+                               setManualLength(Math.round(dist).toString());
+                           }}
+                           className="cursor-pointer hover:opacity-80"
+                         >
                               <rect 
                                 x={mx - fs*2.5} y={my - fs/1.2} 
                                 width={fs*5} height={fs*1.8} 
@@ -2047,13 +2170,13 @@ export default function App() {
                               >
                                 {Math.round(dist)}
                               </text>
-                          </g>
-                        )
-                      })
-                  ))}
-              </g>
-            </svg>
-          </div>
+                         </g>
+                       )
+                     })
+                 ))}
+             </g>
+           </svg>
+         </div>
       </main>
 
       {/* FOOTER */}
@@ -2090,7 +2213,7 @@ export default function App() {
                   </div>
                   <button 
                     onClick={() => setSelectedEdge(null)} 
-                    className="h-10 px-4 bg-gray-100 text-gray-700 rounded-lg font-bold text-xs mt-4"
+                    className="h-10 px-4 bg-gray-100 text-gray-700 rounded-lg font-bold text-xs"
                   >
                     ОК
                   </button>
@@ -2118,7 +2241,7 @@ export default function App() {
                   </div>
                   <button 
                     onClick={() => setIsEditingHeight(false)} 
-                    className="h-10 px-4 bg-gray-100 text-gray-700 rounded-lg font-bold text-xs mt-4"
+                    className="h-10 px-4 bg-gray-100 text-gray-700 rounded-lg font-bold text-xs"
                   >
                     ОК
                   </button>
@@ -2151,10 +2274,10 @@ export default function App() {
                                     />
                                 </div>
                              </div>
-                             <button onClick={deleteElement} className="h-10 px-3 bg-red-100 text-red-700 rounded-lg font-bold text-xs mt-4 flex items-center justify-center">
+                             <button onClick={deleteElement} className="h-10 px-3 bg-red-100 text-red-700 rounded-lg font-bold text-xs flex items-center justify-center">
                                 <Trash2 size={16}/>
                              </button>
-                             <button onClick={() => setSelectedVertex(null)} className="h-10 px-4 bg-gray-100 text-gray-700 rounded-lg font-bold text-xs mt-4">
+                             <button onClick={() => setSelectedVertex(null)} className="h-10 px-4 bg-gray-100 text-gray-700 rounded-lg font-bold text-xs">
                                 ОК
                              </button>
                            </>
@@ -2243,23 +2366,36 @@ export default function App() {
                         const isDeadZone = localPos > 200 || firstSheet.length % 50 !== 0;
                         if (isDeadZone) {
                             return (
-                                <div className="text-[10px] text-red-500 font-bold mt-1 flex items-center gap-1 leading-tight">
-                                    <AlertTriangle size={12}/> Недопустимий розмір (мертва зона або некратний 50)
+                                <div className="text-[10px] text-red-500 font-bold mt-1 flex items-center gap-1 leading-tight absolute">
+                                    <AlertTriangle size={12}/> Недопустимий розмір
                                 </div>
                             );
                         }
                         return null;
                      })()}
                   </div>
-                  <button onClick={() => { setSheets(p => p.filter(s => !selectedSheetIds.includes(s.id))); setSelectedSheetIds([]); }} className="h-10 px-4 bg-red-100 text-red-700 rounded-lg font-bold text-xs mt-4 border border-red-200">Видалити</button>
+                  
+                  {/* Кнопки переміщення вибраних листів (ТІЛЬКИ ВВЕРХ І ВНИЗ) */}
+                  <div className="flex flex-col gap-1 mx-1 justify-center border-l border-r border-gray-200 px-2">
+                      <button onClick={() => moveSelectedSheets(10)} className="p-1 bg-blue-50 text-blue-600 rounded border border-blue-100 hover:bg-blue-100 active:bg-blue-200 transition" title="Вгору (1 см)">
+                          <ArrowUp size={14}/>
+                      </button>
+                      <button onClick={() => moveSelectedSheets(-10)} className="p-1 bg-blue-50 text-blue-600 rounded border border-blue-100 hover:bg-blue-100 active:bg-blue-200 transition" title="Вниз (1 см)">
+                          <ArrowDown size={14}/>
+                      </button>
+                  </div>
+
+                  <button onClick={() => { setSheets(p => p.filter(s => !selectedSheetIds.includes(s.id))); setSelectedSheetIds([]); }} className="h-10 px-3 bg-red-100 text-red-700 rounded-lg font-bold text-xs border border-red-200 flex items-center justify-center">
+                     <Trash2 size={16}/>
+                  </button>
                </div>
              ) : (
                <div className="w-full py-1 font-medium flex flex-col items-center">
-                 <div className="text-xs text-gray-400 flex items-center mb-2">
-                    <MousePointer2 size={16} className="mr-1 opacity-50"/>
-                    Натисніть на лист(и) для редагування
+                 <div className="text-xs text-gray-400 flex flex-col items-center mb-1">
+                    <span className="flex items-center gap-1"><MousePointer2 size={16} className="opacity-50"/> Натисніть на лист(и) для редагування</span>
+                    <span className="text-[10px] mt-1 opacity-70">Підказка: Виділені листи можна рухати кнопками та стрілками</span>
                  </div>
-                 <div className="flex gap-2">
+                 <div className="flex gap-2 mt-1">
                      <button onClick={() => setIsMultiSelect(!isMultiSelect)} className={`px-4 py-1.5 border rounded-lg text-xs font-bold flex items-center gap-2 transition ${isMultiSelect ? 'bg-blue-600 text-white border-blue-700' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
                          <Layers size={14}/> Мульти-вибір
                      </button>
