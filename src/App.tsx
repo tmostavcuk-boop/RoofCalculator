@@ -159,7 +159,7 @@ export default function App() {
 
   // Derived Active State Helpers
   const activeSlopeIndex = useMemo(() => slopes.findIndex(s => s.id === activeSlopeId), [slopes, activeSlopeId]);
-  const activeSlope = slopes[activeSlopeIndex];
+  const activeSlope = slopes[activeSlopeIndex] || slopes[0]; // fallback
 
   // Helper to update active slope
   const updateActiveSlope = useCallback((updater: (slope: RoofSlope) => Partial<RoofSlope>) => {
@@ -171,7 +171,7 @@ export default function App() {
       }
       return newSlopes;
     });
-  }, [activeSlopeId]);
+  }, [activeSlopeId, setSlopes]);
 
   // Compatibility Wrappers for existing logic
   const vertices = activeSlope.vertices;
@@ -182,7 +182,7 @@ export default function App() {
   const setVertices = (val: Point[] | ((p: Point[]) => Point[])) => {
     updateActiveSlope(s => ({ vertices: typeof val === 'function' ? val(s.vertices) : val }));
   };
-  const setHoles = (val: Point[][] | ((p: Point[][]) => Point[][])) => {
+  const setHoles = (val: Point[][] | ((p: Point[][] ) => Point[][])) => {
     updateActiveSlope(s => ({ holes: typeof val === 'function' ? val(s.holes) : val }));
   };
   const setSheets = (val: Sheet[] | ((p: Sheet[]) => Sheet[])) => {
@@ -208,6 +208,10 @@ export default function App() {
   const [uiScale, setUiScale] = useState(1);
   const [isStatsOpen, setIsStatsOpen] = useState(true);
   const [showTemplates, setShowTemplates] = useState(false); 
+  
+  // Picket Specific States
+  const [autoGapMode, setAutoGapMode] = useState(false);
+  const [picketDensity, setPicketDensity] = useState<number | string>(7); // default 7 pcs / meter
 
   // AI State
   const [showAiModal, setShowAiModal] = useState(false);
@@ -272,7 +276,6 @@ export default function App() {
 
   // --- Helpers ---
   const toSvg = (p: Point) => ({ x: p.x, y: -p.y });
-  const fromSvg = (p: Point) => ({ x: p.x, y: -p.y });
 
   const getPolyArea = (points: Point[]) => {
     let a = 0;
@@ -305,6 +308,24 @@ export default function App() {
   const sheetsLinear = useMemo(() => {
       return sheets.reduce((acc, s) => acc + (s.length / 1000), 0);
   }, [sheets]);
+
+  const activeSlopeGap = useMemo(() => {
+      if (material.type !== 'picket') return 0;
+      if (!autoGapMode) return material.gap || 0;
+
+      const minX = Math.min(...vertices.map(p => p.x));
+      const maxX = Math.max(...vertices.map(p => p.x));
+      if (isNaN(minX) || isNaN(maxX)) return material.gap || 0;
+
+      const slopeWidth = maxX - minX;
+      let count = Math.round((slopeWidth / 1000) * Number(picketDensity));
+      if (count < 2) count = 2;
+
+      if (slopeWidth <= material.totalWidth) return 0;
+
+      const activeEffectiveWidth = (slopeWidth - material.totalWidth) / (count - 1);
+      return activeEffectiveWidth - material.totalWidth;
+  }, [material, autoGapMode, vertices, picketDensity]);
 
   const wastePercentage = polygonArea > 0 ? ((sheetsArea - polygonArea) / sheetsArea * 100) : 0;
 
@@ -471,6 +492,23 @@ export default function App() {
         const sWaste = sSheetsArea > 0 ? ((sSheetsArea - sArea) / sSheetsArea * 100) : 0;
         const sCount = s.sheets.length;
         
+        let currentGap = material.gap || 0;
+        if (material.type === 'picket' && autoGapMode) {
+            const minX = Math.min(...s.vertices.map(p => p.x));
+            const maxX = Math.max(...s.vertices.map(p => p.x));
+            if (!isNaN(minX) && !isNaN(maxX)) {
+                const slopeWidth = maxX - minX;
+                let count = Math.round((slopeWidth / 1000) * Number(picketDensity));
+                if (count < 2) count = 2;
+                if (slopeWidth > material.totalWidth) {
+                    const activeEffectiveWidth = (slopeWidth - material.totalWidth) / (count - 1);
+                    currentGap = activeEffectiveWidth - material.totalWidth;
+                } else {
+                    currentGap = 0;
+                }
+            }
+        }
+        
         return `
         <div class="page-break" style="margin-bottom: 50px;">
             <div class="section-title" style="font-size: 20px; font-weight: bold; margin-bottom: 20px; color: #1F2937; border-bottom: 2px solid #2563EB; padding-bottom: 8px;">
@@ -490,6 +528,11 @@ export default function App() {
                     <span style="color: #475569;">${isPicket ? 'Корисні м.п.:' : 'Площа листів корисна:'}</span>
                     <strong style="color: #16A34A;">${isPicket ? sUsefulArea.toFixed(2) + ' м.п.' : sUsefulArea.toFixed(2) + ' м²'}</strong>
                 </li>
+                ${isPicket ? `
+                <li style="padding: 6px 0; border-bottom: 1px dashed #CBD5E1; display: flex; justify-content: space-between;">
+                    <span style="color: #475569;">Монтажний зазор:</span>
+                    <strong style="color: #D97706;">${Math.max(0, currentGap / 10).toFixed(2)} см</strong>
+                </li>` : ''}
                 ${material.type !== 'picket' ? `
                 <li style="padding: 6px 0; border-bottom: 1px dashed #CBD5E1; display: flex; justify-content: space-between;">
                     <span style="color: #475569;">Відходи в відсотках:</span>
@@ -613,7 +656,9 @@ export default function App() {
                   <div><strong>Дата:</strong> ${date}</div>
                   <div><strong>Матеріал:</strong> ${material.name}</div>
                   <div style="font-size: 13px; color: #9CA3AF; margin-top:4px;">
-                    Габарити: ${material.totalWidth} мм / ${material.effectiveWidth} мм
+                    ${isPicket
+                        ? `Ширина штахети: ${material.totalWidth} мм${autoGapMode ? ' (Зазор авто)' : ` / Зазор: ${material.gap} мм`}`
+                        : `Габарити: ${material.totalWidth} мм / ${material.effectiveWidth} мм`}
                   </div>
                 </div>
               </div>
@@ -1032,7 +1077,7 @@ export default function App() {
 
         for (let i = startRow; i <= endRow; i++) {
              const stripBottom = gridOriginY - i * material.effectiveWidth;
-             const stripTop = stripBottom - material.effectiveWidth;
+             const stripTop = stripBottom - material.totalWidth;
              
              if (stripBottom <= minY + 1) continue; 
              if (stripTop >= maxY - 1) continue;
@@ -1070,26 +1115,72 @@ export default function App() {
              });
         }
     } else {
-        const gridOriginX = minX + layoutOffset.x;
-        const startK = Math.floor((minX - gridOriginX) / material.effectiveWidth);
-        const endK = Math.floor((maxX - gridOriginX) / material.effectiveWidth) + 1;
-        
         const slopeWidth = maxX - minX;
-        const centerX = minX + slopeWidth / 2;
-        const actualStartK = Math.floor((minX - gridOriginX) / material.effectiveWidth);
-        const actualEndK = Math.ceil((maxX - gridOriginX) / material.effectiveWidth) - 1;
-        const totalPickets = Math.max(1, actualEndK - actualStartK + 1);
-        const realFenceWidth = totalPickets * material.effectiveWidth;
-        const realStartX = gridOriginX + actualStartK * material.effectiveWidth;
-        const realCenterX = realStartX + realFenceWidth / 2;
+        let gridOriginX = minX + layoutOffset.x;
+        let activeEffectiveWidth = material.effectiveWidth;
 
-        for (let i = startK; i <= endK; i++) {
-           const stripLeft = gridOriginX + i * material.effectiveWidth;
-           const stripRight = stripLeft + material.effectiveWidth;
-           const stripCenter = stripLeft + material.effectiveWidth / 2;
+        let actualStartK = 0;
+        let actualEndK = 0;
+
+        if (material.type === 'picket') {
+            if (autoGapMode) {
+                // АВТО ЗА КІЛЬКІСТЮ: жорстко розтягуємо від minX до maxX
+                let count = Math.round((slopeWidth / 1000) * Number(picketDensity));
+                if (count < 2) count = 2; // мінімум 2 штахети (ліва і права)
+                
+                if (slopeWidth <= material.totalWidth) {
+                    activeEffectiveWidth = material.totalWidth;
+                    actualStartK = 0;
+                    actualEndK = 0;
+                } else {
+                    // Точний математичний крок (від лівого краю першої до лівого краю останньої штахети)
+                    activeEffectiveWidth = (slopeWidth - material.totalWidth) / (count - 1);
+                    actualStartK = 0;
+                    actualEndK = count - 1;
+                }
+                gridOriginX = minX; // Жорстка прив'язка до лівого краю (ігноруємо ручні зсуви)
+            } else {
+                // РУЧНИЙ ЗАЗОР
+                let startK = Math.floor((minX - gridOriginX) / activeEffectiveWidth);
+                let endK = Math.floor((maxX - gridOriginX) / activeEffectiveWidth) + 1;
+                
+                actualStartK = startK;
+                while (actualStartK <= endK) {
+                    // Лівий край штахети строго НЕ виходить за minX
+                    if (gridOriginX + actualStartK * activeEffectiveWidth >= minX - 0.1) break;
+                    actualStartK++;
+                }
+                actualEndK = endK;
+                while (actualEndK >= startK) {
+                    // Правий край штахети строго НЕ виходить за maxX
+                    if (gridOriginX + actualEndK * activeEffectiveWidth + material.totalWidth <= maxX + 0.1) break;
+                    actualEndK--;
+                }
+            }
+        } else {
+            // ІНШІ МАТЕРІАЛИ
+            actualStartK = Math.floor((minX - gridOriginX) / activeEffectiveWidth);
+            actualEndK = Math.ceil((maxX - gridOriginX) / activeEffectiveWidth) - 1;
+        }
+
+        // --- FIXED CALCULATION FOR ARCH CENTERS ---
+        const totalPickets = Math.max(1, actualEndK - actualStartK + 1);
+        const realFenceWidth = Math.max(0, (totalPickets - 1) * activeEffectiveWidth); 
+        const realStartX = gridOriginX + actualStartK * activeEffectiveWidth;
+        // Додаємо material.totalWidth / 2, щоб центр арки рахувався від центрів штахет, а не їх лівих країв
+        const realCenterX = realStartX + realFenceWidth / 2 + material.totalWidth / 2;
+
+        for (let i = actualStartK; i <= actualEndK; i++) {
+           const stripLeft = gridOriginX + i * activeEffectiveWidth;
+           const stripRight = stripLeft + material.totalWidth;
+           const stripCenter = stripLeft + material.totalWidth / 2;
            
-           if (stripLeft >= maxX - 1) continue;
-           if (stripRight <= minX + 1) continue;
+           if (material.type === 'picket') {
+               if (i < actualStartK || i > actualEndK) continue;
+           } else {
+               if (stripLeft >= maxX - 1) continue;
+               if (stripRight <= minX + 1) continue;
+           }
 
            const segments = getMergedSegments(stripLeft, stripRight, true);
 
@@ -1117,10 +1208,9 @@ export default function App() {
 
                         if (material.picketProfile && material.picketProfile !== 'straight') {
                             const dist = Math.abs(stripCenter - realCenterX); 
-                            const W = realFenceWidth; 
-                            const maxH = material.maxLength || 0;
-                            const minH = material.minLength ?? maxH;
-                            const H = Math.max(0, maxH - minH); 
+                            const W = Math.max(1, (totalPickets - 1) * activeEffectiveWidth); 
+                            // Правильно розраховуємо висоту арки (H) як різницю між максимальною і мінімальною висотою
+                            const H = Math.max(0, material.maxLength - (material.minLength || material.maxLength));
                             
                             if (H > 0 && W > 0) {
                                 const R = (H / 2) + ((W * W) / (8 * H));
@@ -1178,13 +1268,13 @@ export default function App() {
         }
     }
     setSheets(newSheets);
-  }, [vertices, holes, material, layoutOffset]);
+  }, [vertices, holes, material, layoutOffset, autoGapMode, picketDensity]);
 
   useEffect(() => {
       if (step === 'layout') {
           calculateLayout();
       }
-  }, [layoutOffset, step, activeSlopeId]); 
+  }, [calculateLayout, step, activeSlopeId]); 
 
   // --- Пересування листів стрілками (Клавіатура) ---
   useEffect(() => {
@@ -1382,7 +1472,17 @@ export default function App() {
   };
 
   const updatePicketGap = (newGap: number) => setMaterial(prev => ({ ...prev, gap: newGap, effectiveWidth: prev.totalWidth + newGap }));
-  const updatePicketWidth = (newWidth: number) => setMaterial(prev => ({ ...prev, totalWidth: newWidth, effectiveWidth: newWidth + (prev.gap || 0) }));
+  const updatePicketWidth = (newWidth: number) => {
+      const density = Number(picketDensity);
+      if (autoGapMode && density > 0) {
+          setMaterial(prev => {
+             const newGap = (1000 / density) - newWidth;
+             return { ...prev, totalWidth: newWidth, gap: newGap, effectiveWidth: newWidth + newGap };
+          });
+      } else {
+          setMaterial(prev => ({ ...prev, totalWidth: newWidth, effectiveWidth: newWidth + (prev.gap || 0) }));
+      }
+  };
 
   const pointRadius = Math.max(50, 10 / uiScale);
 
@@ -1405,7 +1505,10 @@ export default function App() {
              {Object.values(MATERIAL_PRESETS).map(m => (
                <button 
                  key={m.type} 
-                 onClick={() => setMaterial(m)} 
+                 onClick={() => {
+                     setMaterial(m);
+                     setAutoGapMode(false); // Завжди скидати режим авто, щоб синхронізувати з пресетом
+                 }} 
                  className={`flex flex-col items-center gap-2 p-3 rounded-xl border-2 transition-all ${material.type === m.type ? 'border-blue-600 bg-blue-50 text-blue-700' : 'border-gray-200 bg-white text-gray-600'}`}
                >
                  <div className="text-current">
@@ -1426,14 +1529,74 @@ export default function App() {
                 
                 {material.type === 'picket' ? (
                     <>
+                    <div className="flex bg-gray-100 p-1 rounded-lg mb-3 shadow-inner">
+                        <button
+                            onClick={() => setAutoGapMode(false)}
+                            className={`flex-1 text-[11px] font-bold py-1.5 rounded transition ${!autoGapMode ? 'bg-white shadow-sm text-blue-600' : 'text-gray-500 hover:bg-gray-200'}`}
+                        >
+                            Зазор вручну
+                        </button>
+                        <button
+                            onClick={() => {
+                                setAutoGapMode(true);
+                                const density = Number(picketDensity);
+                                if (density > 0) {
+                                    setMaterial(prev => {
+                                        const newGap = (1000 / density) - prev.totalWidth;
+                                        return { ...prev, gap: newGap, effectiveWidth: prev.totalWidth + newGap };
+                                    });
+                                }
+                            }}
+                            className={`flex-1 text-[11px] font-bold py-1.5 rounded transition ${autoGapMode ? 'bg-white shadow-sm text-blue-600' : 'text-gray-500 hover:bg-gray-200'}`}
+                        >
+                            Авто за кількістю
+                        </button>
+                    </div>
+
                     <div className="grid grid-cols-2 gap-4">
                         <div>
                             <label className="text-[10px] text-gray-500 font-bold uppercase block mb-1">Ширина (см)</label>
-                            <input type="number" value={material.totalWidth / 10} onChange={(e) => updatePicketWidth(+e.target.value * 10)} className="w-full border rounded-lg p-2 text-lg font-bold bg-gray-50"/>
+                            <input
+                                type="number"
+                                value={material.totalWidth / 10}
+                                onChange={(e) => updatePicketWidth(+e.target.value * 10)}
+                                className="w-full border rounded-lg p-2 text-lg font-bold bg-gray-50"
+                            />
                         </div>
                         <div>
-                            <label className="text-[10px] text-gray-500 font-bold uppercase block mb-1">Зазор (см)</label>
-                            <input type="number" value={(material.gap || 0) / 10} onChange={(e) => updatePicketGap(+e.target.value * 10)} className="w-full border rounded-lg p-2 text-lg font-bold bg-gray-50"/>
+                            {autoGapMode ? (
+                                <>
+                                    <label className="text-[10px] text-gray-500 font-bold uppercase block mb-1">Шт. на 1 м.п.</label>
+                                    <input
+                                        type="number"
+                                        step="any"
+                                        min="1"
+                                        value={picketDensity}
+                                        onChange={(e) => {
+                                            const val = e.target.value;
+                                            setPicketDensity(val === '' ? '' : val);
+                                            const density = Number(val);
+                                            if (density > 0) {
+                                                setMaterial(prev => {
+                                                    const newGap = (1000 / density) - prev.totalWidth;
+                                                    return { ...prev, gap: newGap, effectiveWidth: prev.totalWidth + newGap };
+                                                });
+                                            }
+                                        }}
+                                        className="w-full border rounded-lg p-2 text-lg font-bold bg-blue-50 border-blue-200"
+                                    />
+                                </>
+                            ) : (
+                                <>
+                                    <label className="text-[10px] text-gray-500 font-bold uppercase block mb-1">Зазор (см)</label>
+                                    <input
+                                        type="number"
+                                        value={(material.gap || 0) / 10}
+                                        onChange={(e) => updatePicketGap(+e.target.value * 10)}
+                                        className="w-full border rounded-lg p-2 text-lg font-bold bg-gray-50"
+                                    />
+                                </>
+                            )}
                         </div>
                         <div className="col-span-2">
                              <label className="text-[10px] text-gray-500 font-bold uppercase block mb-1">Макс висота (см)</label>
@@ -1462,9 +1625,16 @@ export default function App() {
                          )}
                     </div>
 
-                    <div className="col-span-2 bg-blue-50 p-2 rounded text-xs text-blue-700 flex items-center gap-2 mt-2">
-                        <Info size={14}/>
-                        <span>Крок монтажу (ширина + зазор): <b>{(material.effectiveWidth / 10).toFixed(1)} см</b></span>
+                    <div className="col-span-2 bg-blue-50 p-2 rounded text-xs text-blue-700 flex flex-col gap-1 mt-2">
+                        <div className="flex items-center gap-2">
+                            <Info size={14}/>
+                            <span>Крок монтажу (ширина + зазор): <b>{(material.effectiveWidth / 10).toFixed(1)} см</b></span>
+                        </div>
+                        {autoGapMode && (
+                            <div className="flex items-center gap-2 ml-5">
+                                <span className="opacity-80">↳ Орієнтовний зазор (на 1м):</span> <b>{((material.gap || 0) / 10).toFixed(2)} см</b>
+                            </div>
+                        )}
                     </div>
                     </>
                 ) : (
@@ -1773,6 +1943,18 @@ export default function App() {
                                             {material.type === 'picket' ? `${sheetsLinear.toFixed(2)} м.п.` : `${sheetsArea.toFixed(2)} м²`}
                                         </span>
                                     </div>
+
+                                    {material.type === 'picket' && (
+                                        <div className="flex items-center justify-between">
+                                            <div className="flex items-center gap-2 text-gray-700">
+                                                <AlignJustify size={16}/>
+                                                <span className="text-xs">Зазор штахет</span>
+                                            </div>
+                                            <span className="text-xs font-bold text-orange-600">
+                                                {Math.max(0, activeSlopeGap / 10).toFixed(2)} см
+                                            </span>
+                                        </div>
+                                    )}
 
                                     {material.type !== 'picket' && (
                                         <div className="flex items-center justify-between">
@@ -2216,7 +2398,7 @@ export default function App() {
             ) : isEditingHeight ? (
                <div className="flex w-full gap-2 items-center px-2">
                   <div className="flex-1">
-                     <label className="text-[10px] text-purple-600 font-bold uppercase ml-1 block flex items-center gap-1">
+                     <label className="text-[10px] text-purple-600 font-bold uppercase ml-1 flex items-center gap-1">
                         <ArrowUpDown size={10}/> Висота скату
                      </label>
                      <input 
