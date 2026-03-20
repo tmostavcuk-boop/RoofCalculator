@@ -450,13 +450,13 @@ export default function App() {
         
         const outlinePath = `M ${slope.vertices.map(toSvg).map(p => `${p.x} ${p.y}`).join(' L ')} Z`;
         const holesSvg = slope.holes.map(h => `
-             <path d="M ${h.map(toSvg).map(p => `${p.x} ${p.y}`).join(' L ')} Z" fill="rgba(239, 68, 68, 0.1)" stroke="#EF4444" stroke-width="10" stroke-dasharray="15,15" />
+             <path d="M ${h.map(toSvg).map(p => `${p.x} ${p.y}`).join(' L ')} Z" fill="rgba(239, 68, 68, 0.1)" stroke="#EF4444" stroke-opacity="0.5" stroke-width="10" stroke-dasharray="15,15" />
         `).join('');
 
         return `<svg viewBox="${viewBox}" width="${renderW}" height="${renderH}" style="max-width: 100%; height: auto; display: block; margin: 0 auto; overflow: visible;" preserveAspectRatio="xMidYMid meet">
             <path d="${bgPath}" fill="#F1F5F9" stroke="none" fill-rule="evenodd" />
             ${sheetsSvg}
-            <path d="${outlinePath}" fill="none" stroke="#2563EB" stroke-width="8" />
+            <path d="${outlinePath}" fill="none" stroke="#2563EB" stroke-opacity="0.5" stroke-width="8" />
             ${holesSvg}
         </svg>`;
     };
@@ -1152,8 +1152,8 @@ export default function App() {
                 }
                 actualEndK = endK;
                 while (actualEndK >= startK) {
-                    // Правий край штахети строго НЕ виходить за maxX
-                    if (gridOriginX + actualEndK * activeEffectiveWidth + material.totalWidth <= maxX + 0.1) break;
+                    // Лівий край штахети знаходиться в межах скату (дозволяємо правому краю виступати)
+                    if (gridOriginX + actualEndK * activeEffectiveWidth <= maxX + 0.1) break;
                     actualEndK--;
                 }
             }
@@ -2152,14 +2152,14 @@ export default function App() {
                  {/* --- 3. Outlines and Highlights (Top Layer) --- */}
                  <path 
                    d={`M ${vertices.map(toSvg).map(p => `${p.x} ${p.y}`).join(' L ')} Z`}
-                   fill="none" stroke="#2563EB" strokeWidth="5" vectorEffect="non-scaling-stroke"
+                   fill="none" stroke="#2563EB" strokeOpacity="0.5" strokeWidth="5" vectorEffect="non-scaling-stroke"
                  />
                  
                  {holes.map((hole, hi) => (
                    <g key={`hg-${hi}`}>
                      <path 
                        d={`M ${hole.map(toSvg).map(p => `${p.x} ${p.y}`).join(' L ')} Z`}
-                       fill="rgba(239, 68, 68, 0.2)" stroke="#EF4444" strokeWidth="4" strokeDasharray="10,10" vectorEffect="non-scaling-stroke"
+                       fill="rgba(239, 68, 68, 0.2)" stroke="#EF4444" strokeOpacity="0.5" strokeWidth="4" strokeDasharray="10,10" vectorEffect="non-scaling-stroke"
                      />
                      {step === 'geometry' && (() => {
                          const center = getCentroid(hole);
