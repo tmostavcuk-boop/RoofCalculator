@@ -68,13 +68,14 @@ const MATERIAL_PRESETS: Record<MaterialType, MaterialParams> = {
   picket: { type: 'picket', name: 'Штахетник', totalWidth: 115, effectiveWidth: 135, maxLength: 2000, minLength: 1700, gap: 20, overlap: 0, picketProfile: 'straight' }
 };
 
+// Всі координати шаблонів переведені в додатну площину (без мінусів)
 const ROOF_TEMPLATES = [
-  { id: 'rect', name: 'Прямокутник', points: [{x:-2000,y:0}, {x:-2000,y:3000}, {x:2000,y:3000}, {x:2000,y:0}] },
-  { id: 'trap', name: 'Трапеція', points: [{x:-2500,y:0}, {x:-1500,y:3000}, {x:1500,y:3000}, {x:2500,y:0}] },
-  { id: 'tri', name: 'Трикутник', points: [{x:-2000,y:0}, {x:0,y:3500}, {x:2000,y:0}] },
-  { id: 'l', name: 'Г-подібний', points: [{x:-2000,y:0}, {x:-2000,y:4000}, {x:0,y:4000}, {x:0,y:2000}, {x:2000,y:2000}, {x:2000,y:0}] },
-  { id: 'u', name: 'П-подібний', points: [{x:-2500,y:0}, {x:-2500,y:4000}, {x:-1000,y:4000}, {x:-1000,y:2000}, {x:1000,y:2000}, {x:1000,y:4000}, {x:2500,y:4000}, {x:2500,y:0}] },
-  { id: 't', name: 'Т-подібний', points: [{x:-500,y:4000}, {x:500,y:4000}, {x:500,y:2500}, {x:2500,y:2500}, {x:2500,y:1500}, {x:500,y:1500}, {x:500,y:0}, {x:-500,y:0}] },
+  { id: 'rect', name: 'Прямокутник', points: [{x:0,y:0}, {x:0,y:3000}, {x:4000,y:3000}, {x:4000,y:0}] },
+  { id: 'trap', name: 'Трапеція', points: [{x:0,y:0}, {x:1000,y:3000}, {x:4000,y:3000}, {x:5000,y:0}] },
+  { id: 'tri', name: 'Трикутник', points: [{x:0,y:0}, {x:2000,y:3500}, {x:4000,y:0}] },
+  { id: 'l', name: 'Г-подібний', points: [{x:0,y:0}, {x:0,y:4000}, {x:2000,y:4000}, {x:2000,y:2000}, {x:4000,y:2000}, {x:4000,y:0}] },
+  { id: 'u', name: 'П-подібний', points: [{x:0,y:0}, {x:0,y:4000}, {x:1500,y:4000}, {x:1500,y:2000}, {x:3500,y:2000}, {x:3500,y:4000}, {x:5000,y:4000}, {x:5000,y:0}] },
+  { id: 't', name: 'Т-подібний', points: [{x:0,y:4000}, {x:1000,y:4000}, {x:1000,y:2500}, {x:3000,y:2500}, {x:3000,y:1500}, {x:1000,y:1500}, {x:1000,y:0}, {x:0,y:0}] },
 ];
 
 // --- Components ---
@@ -105,7 +106,7 @@ export default function App() {
   const initialSlopes: RoofSlope[] = [{
     id: 'slope-1',
     name: 'Схил 1',
-    vertices: [{ x: -3000, y: 0 }, { x: -1000, y: 3000 }, { x: 1000, y: 3000 }, { x: 3000, y: 0 }],
+    vertices: [{ x: 0, y: 0 }, { x: 2000, y: 3000 }, { x: 4000, y: 3000 }, { x: 6000, y: 0 }],
     holes: [],
     sheets: [],
     layoutOffset: { x: 0, y: 0 }
@@ -157,11 +158,9 @@ export default function App() {
   const [isRenamingSlope, setIsRenamingSlope] = useState(false);
   const [tempSlopeName, setTempSlopeName] = useState("");
 
-  // Derived Active State Helpers
   const activeSlopeIndex = useMemo(() => slopes.findIndex(s => s.id === activeSlopeId), [slopes, activeSlopeId]);
-  const activeSlope = slopes[activeSlopeIndex] || slopes[0]; // fallback
+  const activeSlope = slopes[activeSlopeIndex] || slopes[0];
 
-  // Helper to update active slope
   const updateActiveSlope = useCallback((updater: (slope: RoofSlope) => Partial<RoofSlope>) => {
     setSlopes(prev => {
       const newSlopes = [...prev];
@@ -173,7 +172,6 @@ export default function App() {
     });
   }, [activeSlopeId, setSlopes]);
 
-  // Compatibility Wrappers for existing logic
   const vertices = activeSlope.vertices;
   const holes = activeSlope.holes;
   const sheets = activeSlope.sheets;
@@ -192,7 +190,6 @@ export default function App() {
     updateActiveSlope(s => ({ layoutOffset: typeof val === 'function' ? val(s.layoutOffset) : val }));
   };
 
-  // Selection States
   const [selectedSheetIds, setSelectedSheetIds] = useState<string[]>([]);
   const [isMultiSelect, setIsMultiSelect] = useState(false);
   const [activeElement, setActiveElement] = useState<{ polyIndex: number, vertIndex: number } | null>(null);
@@ -204,22 +201,18 @@ export default function App() {
   const [lockedEdgePoint, setLockedEdgePoint] = useState<'p1' | 'p2'>('p1');
   const [previewHtml, setPreviewHtml] = useState<string | null>(null);
   
-  // UI States
   const [uiScale, setUiScale] = useState(1);
   const [isStatsOpen, setIsStatsOpen] = useState(true);
   const [showTemplates, setShowTemplates] = useState(false); 
   
-  // Picket Specific States
   const [autoGapMode, setAutoGapMode] = useState(false);
-  const [picketDensity, setPicketDensity] = useState<number | string>(7); // default 7 pcs / meter
+  const [picketDensity, setPicketDensity] = useState<number | string>(7);
 
-  // AI State
   const [showAiModal, setShowAiModal] = useState(false);
   const [aiMessages, setAiMessages] = useState<ChatMessage[]>([]);
   const [aiInput, setAiInput] = useState("");
   const [aiLoading, setAiLoading] = useState(false);
 
-  // Refs
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<SVGGElement>(null);
   const transform = useRef({ x: 0, y: 0, scale: 0.05 });
@@ -274,7 +267,6 @@ export default function App() {
     return () => window.removeEventListener('message', handleMessage);
   }, []);
 
-  // --- Helpers ---
   const toSvg = (p: Point) => ({ x: p.x, y: -p.y });
 
   const getPolyArea = (points: Point[]) => {
@@ -294,7 +286,6 @@ export default function App() {
       return { x: x/points.length, y: y/points.length };
   };
 
-  // Stats for ACTIVE slope
   const polygonArea = useMemo(() => {
     const outer = getPolyArea(vertices);
     const inner = holes.reduce((acc, h) => acc + getPolyArea(h), 0);
@@ -329,7 +320,6 @@ export default function App() {
 
   const wastePercentage = polygonArea > 0 ? ((sheetsArea - polygonArea) / sheetsArea * 100) : 0;
 
-  // Global Stats
   const totalProjectStats = useMemo(() => {
       let totalArea = 0;
       let totalSheetsArea = 0;
@@ -674,7 +664,6 @@ export default function App() {
     setPreviewHtml(htmlContent);
   };
 
-  // --- AI Logic ---
   const getProjectContext = () => {
     return `
       Ти експерт-покрівельник у додатку Roof Master.
@@ -711,7 +700,6 @@ export default function App() {
   }, [aiMessages]);
 
 
-  // --- Rendering & Viewport ---
   const updateTransform = useCallback(() => {
     if (canvasRef.current) {
       const { x, y, scale } = transform.current;
@@ -789,7 +777,6 @@ export default function App() {
     return () => { document.body.style.overflow = ''; };
   }, []);
 
-  // --- INTERACTION ENGINE V2: POINTER EVENTS ---
   const getPointerPos = (e: React.PointerEvent) => {
     return { x: e.clientX, y: e.clientY };
   };
@@ -854,7 +841,10 @@ export default function App() {
           setVertices(prev => {
             const next = [...prev];
             if (next[vertIndex]) {
-                next[vertIndex] = { x: next[vertIndex].x + dx / scale, y: next[vertIndex].y + dy / scale };
+                next[vertIndex] = { 
+                    x: Math.max(0, next[vertIndex].x + dx / scale), 
+                    y: Math.max(0, next[vertIndex].y + dy / scale) 
+                };
             }
             return next;
           });
@@ -863,10 +853,20 @@ export default function App() {
               const nextHoles = [...prev];
               let nextPoly = [...nextHoles[polyIndex]];
               if (vertIndex === -1) {
-                  nextPoly = nextPoly.map(p => ({ x: p.x + dx / scale, y: p.y + dy / scale }));
+                  const nextX = nextPoly.map(p => p.x + dx / scale);
+                  const nextY = nextPoly.map(p => p.y + dy / scale);
+                  const minX = Math.min(...nextX);
+                  const minY = Math.min(...nextY);
+                  // Ефективно не дозволяє вирізу зайти в мінусові координати
+                  const clampDx = minX < 0 ? dx / scale - minX : dx / scale; 
+                  const clampDy = minY < 0 ? dy / scale - minY : dy / scale;
+                  nextPoly = nextPoly.map(p => ({ x: p.x + clampDx, y: p.y + clampDy }));
               } else {
                   if (nextPoly[vertIndex]) {
-                      nextPoly[vertIndex] = { x: nextPoly[vertIndex].x + dx / scale, y: nextPoly[vertIndex].y + dy / scale };
+                      nextPoly[vertIndex] = { 
+                          x: Math.max(0, nextPoly[vertIndex].x + dx / scale), 
+                          y: Math.max(0, nextPoly[vertIndex].y + dy / scale) 
+                      };
                   }
               }
               nextHoles[polyIndex] = nextPoly;
@@ -889,24 +889,24 @@ export default function App() {
   const updateVertexCoordinate = (axis: 'x' | 'y', val: number) => {
       if (!selectedVertex) return;
       const { polyIndex, vertIndex } = selectedVertex;
+      const safeVal = Math.max(0, val);
       if (polyIndex === -1) {
           setVertices(prev => {
               const next = [...prev];
-              next[vertIndex] = { ...next[vertIndex], [axis]: val };
+              next[vertIndex] = { ...next[vertIndex], [axis]: safeVal };
               return next;
           });
       } else {
           setHoles(prev => {
               const next = [...prev];
               const poly = [...next[polyIndex]];
-              poly[vertIndex] = { ...poly[vertIndex], [axis]: val };
+              poly[vertIndex] = { ...poly[vertIndex], [axis]: safeVal };
               next[polyIndex] = poly;
               return next;
           });
       }
   };
 
-  // --- Logic Functions ---
   const moveLayout = (dx: number, dy: number) => {
     setLayoutOffset(prev => ({ x: prev.x + dx, y: prev.y + dy }));
   };
@@ -951,15 +951,31 @@ export default function App() {
         return newPoints;
     };
 
-    if (polyIndex === -1) {
-        setVertices(prev => applyChange(prev));
-    } else {
-        setHoles(prev => {
-            const next = [...prev];
-            next[polyIndex] = applyChange(next[polyIndex]);
-            return next;
-        });
-    }
+    updateActiveSlope(s => {
+        let newVertices = s.vertices;
+        let newHoles = [...s.holes];
+        
+        if (polyIndex === -1) {
+            newVertices = applyChange(s.vertices);
+        } else {
+            newHoles[polyIndex] = applyChange(s.holes[polyIndex]);
+        }
+
+        const allPoints = [...newVertices, ...newHoles.flat()];
+        const minX = Math.min(...allPoints.map(p => p.x));
+        const minY = Math.min(...allPoints.map(p => p.y));
+        const shiftX = minX < 0 ? -minX : 0;
+        const shiftY = minY < 0 ? -minY : 0;
+
+        // Нормалізація, якщо з'явилися від'ємні координати
+        if (shiftX > 0 || shiftY > 0) {
+            newVertices = newVertices.map(p => ({ x: p.x + shiftX, y: p.y + shiftY }));
+            newHoles = newHoles.map(poly => poly.map(p => ({ x: p.x + shiftX, y: p.y + shiftY })));
+            setTimeout(fitView, 50);
+        }
+
+        return { vertices: newVertices, holes: newHoles };
+    });
   };
 
   const updateHeight = (newH: number) => {
@@ -969,7 +985,7 @@ export default function App() {
     const currentH = maxY - minY;
     if (currentH < 1 || newH < 1) return;
     const scale = newH / currentH;
-    setVertices(prev => prev.map(p => ({ ...p, y: minY + (p.y - minY) * scale })));
+    setVertices(prev => prev.map(p => ({ ...p, y: Math.max(0, minY + (p.y - minY) * scale) })));
   };
 
   const getIntersections = (scanLineVal: number, isVertical: boolean) => {
@@ -1130,50 +1146,42 @@ export default function App() {
 
         if (material.type === 'picket') {
             if (autoGapMode) {
-                // АВТО ЗА КІЛЬКІСТЮ: жорстко розтягуємо від minX до maxX
                 let count = Math.round((slopeWidth / 1000) * Number(picketDensity));
-                if (count < 2) count = 2; // мінімум 2 штахети (ліва і права)
+                if (count < 2) count = 2; 
                 
                 if (slopeWidth <= material.totalWidth) {
                     activeEffectiveWidth = material.totalWidth;
                     actualStartK = 0;
                     actualEndK = 0;
                 } else {
-                    // Точний математичний крок (від лівого краю першої до лівого краю останньої штахети)
                     activeEffectiveWidth = (slopeWidth - material.totalWidth) / (count - 1);
                     actualStartK = 0;
                     actualEndK = count - 1;
                 }
-                gridOriginX = minX; // Жорстка прив'язка до лівого краю (ігноруємо ручні зсуви)
+                gridOriginX = minX; 
             } else {
-                // РУЧНИЙ ЗАЗОР
                 let startK = Math.floor((minX - gridOriginX) / activeEffectiveWidth);
                 let endK = Math.floor((maxX - gridOriginX) / activeEffectiveWidth) + 1;
                 
                 actualStartK = startK;
                 while (actualStartK <= endK) {
-                    // Лівий край штахети строго НЕ виходить за minX
                     if (gridOriginX + actualStartK * activeEffectiveWidth >= minX - 0.1) break;
                     actualStartK++;
                 }
                 actualEndK = endK;
                 while (actualEndK >= startK) {
-                    // Лівий край штахети знаходиться в межах скату (дозволяємо правому краю виступати)
                     if (gridOriginX + actualEndK * activeEffectiveWidth <= maxX + 0.1) break;
                     actualEndK--;
                 }
             }
         } else {
-            // ІНШІ МАТЕРІАЛИ
             actualStartK = Math.floor((minX - gridOriginX) / activeEffectiveWidth);
             actualEndK = Math.ceil((maxX - gridOriginX) / activeEffectiveWidth) - 1;
         }
 
-        // --- FIXED CALCULATION FOR ARCH CENTERS ---
         const totalPickets = Math.max(1, actualEndK - actualStartK + 1);
         const realFenceWidth = Math.max(0, (totalPickets - 1) * activeEffectiveWidth); 
         const realStartX = gridOriginX + actualStartK * activeEffectiveWidth;
-        // Додаємо material.totalWidth / 2, щоб центр арки рахувався від центрів штахет, а не їх лівих країв
         const realCenterX = realStartX + realFenceWidth / 2 + material.totalWidth / 2;
 
         for (let i = actualStartK; i <= actualEndK; i++) {
@@ -1215,7 +1223,6 @@ export default function App() {
                         if (material.picketProfile && material.picketProfile !== 'straight') {
                             const dist = Math.abs(stripCenter - realCenterX); 
                             const W = Math.max(1, (totalPickets - 1) * activeEffectiveWidth); 
-                            // Правильно розраховуємо висоту арки (H) як різницю між максимальною і мінімальною висотою
                             const H = Math.max(0, material.maxLength - (material.minLength || material.maxLength));
                             
                             if (H > 0 && W > 0) {
@@ -1282,7 +1289,6 @@ export default function App() {
       }
   }, [calculateLayout, step, activeSlopeId]); 
 
-  // --- Пересування листів стрілками (Клавіатура) ---
   useEffect(() => {
       const handleKeyDown = (e: KeyboardEvent) => {
           if (['INPUT', 'TEXTAREA'].includes((document.activeElement as HTMLElement)?.tagName || '')) return;
@@ -1350,9 +1356,24 @@ export default function App() {
           }
       };
 
-      setVertices(prev => prev.map(rotatePoint));
-      setHoles(prev => prev.map(hole => hole.map(rotatePoint)));
-      setTimeout(fitView, 50);
+      updateActiveSlope(s => {
+          let rotatedVertices = s.vertices.map(rotatePoint);
+          let rotatedHoles = s.holes.map(hole => hole.map(rotatePoint));
+
+          const allRotated = [...rotatedVertices, ...rotatedHoles.flat()];
+          const newMinX = Math.min(...allRotated.map(p => p.x));
+          const newMinY = Math.min(...allRotated.map(p => p.y));
+          const shiftX = newMinX < 0 ? -newMinX : 0;
+          const shiftY = newMinY < 0 ? -newMinY : 0;
+
+          if (shiftX > 0 || shiftY > 0) {
+              rotatedVertices = rotatedVertices.map(p => ({ x: p.x + shiftX, y: p.y + shiftY }));
+              rotatedHoles = rotatedHoles.map(hole => hole.map(p => ({ x: p.x + shiftX, y: p.y + shiftY })));
+          }
+
+          setTimeout(fitView, 50);
+          return { vertices: rotatedVertices, holes: rotatedHoles };
+      });
   };
 
   const applyTemplate = (points: Point[]) => {
@@ -1368,7 +1389,7 @@ export default function App() {
       setSlopes(prev => [...prev, {
           id: newId,
           name: `Схил ${prev.length + 1}`,
-          vertices: [{ x: -2000, y: 0 }, { x: -2000, y: 3000 }, { x: 2000, y: 3000 }, { x: 2000, y: 0 }],
+          vertices: [{ x: 0, y: 0 }, { x: 0, y: 3000 }, { x: 4000, y: 3000 }, { x: 4000, y: 0 }],
           holes: [],
           sheets: [],
           layoutOffset: { x: 0, y: 0 }
@@ -1487,7 +1508,14 @@ export default function App() {
       const cx = (minX + maxX) / 2;
       const cy = (minY + maxY) / 2;
       const size = 1000;
-      const newHole = [{x:cx-size/2,y:cy-size/2},{x:cx+size/2,y:cy-size/2},{x:cx+size/2,y:cy+size/2},{x:cx-size/2,y:cy+size/2}];
+      let newHole = [
+          {x: cx - size/2, y: cy - size/2},
+          {x: cx + size/2, y: cy - size/2},
+          {x: cx + size/2, y: cy + size/2},
+          {x: cx - size/2, y: cy + size/2}
+      ];
+      // Запобіжник мінусів для нового отвору
+      newHole = newHole.map(p => ({ x: Math.max(0, p.x), y: Math.max(0, p.y) }));
       setHoles([...holes, newHole]);
       setSelectedHoleIndex(holes.length);
   };
@@ -1528,7 +1556,7 @@ export default function App() {
                  key={m.type} 
                  onClick={() => {
                      setMaterial(m);
-                     setAutoGapMode(false); // Завжди скидати режим авто, щоб синхронізувати з пресетом
+                     setAutoGapMode(false);
                  }} 
                  className={`flex flex-col items-center gap-2 p-3 rounded-xl border-2 transition-all ${material.type === m.type ? 'border-blue-600 bg-blue-50 text-blue-700' : 'border-gray-200 bg-white text-gray-600'}`}
                >
@@ -2091,11 +2119,11 @@ export default function App() {
                  </clipPath>
              </defs>
              <g ref={canvasRef} style={{ transformOrigin: '0 0', willChange: 'transform' }}>
-                 <rect x="-10000" y="-10000" width="20000" height="20000" fill="url(#grid)" />
+                 <rect x="-10000" y="-10000" width="30000" height="30000" fill="url(#grid)" />
                  
                  {/* --- AXES (Visual Guides) --- */}
-                 <line x1="-10000" y1="0" x2="10000" y2="0" stroke="#EF4444" strokeWidth="3" strokeOpacity="0.5" /> 
-                 <line x1="0" y1="-10000" x2="0" y2="10000" stroke="#10B981" strokeWidth="3" strokeOpacity="0.5" /> 
+                 <line x1="-10000" y1="0" x2="20000" y2="0" stroke="#EF4444" strokeWidth="3" strokeOpacity="0.5" /> 
+                 <line x1="0" y1="-10000" x2="0" y2="20000" stroke="#10B981" strokeWidth="3" strokeOpacity="0.5" /> 
 
                  {/* --- 1. Background Fill (Bottom Layer) --- */}
                  <path 
@@ -2457,8 +2485,9 @@ export default function App() {
                                     <label className="text-[10px] text-green-600 font-bold uppercase ml-1 block">X</label>
                                     <input 
                                         type="number" 
+                                        min="0"
                                         value={Math.round(p.x)} 
-                                        onChange={(e) => updateVertexCoordinate('x', +e.target.value)}
+                                        onChange={(e) => updateVertexCoordinate('x', Math.max(0, +e.target.value))}
                                         className="w-full border-2 border-green-500 bg-green-50 rounded p-2 text-sm font-bold outline-none"
                                     />
                                 </div>
@@ -2466,8 +2495,9 @@ export default function App() {
                                     <label className="text-[10px] text-green-600 font-bold uppercase ml-1 block">Y</label>
                                     <input 
                                         type="number" 
+                                        min="0"
                                         value={Math.round(p.y)} 
-                                        onChange={(e) => updateVertexCoordinate('y', +e.target.value)}
+                                        onChange={(e) => updateVertexCoordinate('y', Math.max(0, +e.target.value))}
                                         className="w-full border-2 border-green-500 bg-green-50 rounded p-2 text-sm font-bold outline-none"
                                     />
                                 </div>
