@@ -911,14 +911,20 @@ export default function App() {
     setLayoutOffset(prev => ({ x: prev.x + dx, y: prev.y + dy }));
   };
 
-  const moveSelectedSheets = useCallback((dy: number) => {
+  const resizeSelectedSheets = useCallback((dy: number) => {
       setSheets(prev => prev.map(sheet => {
           if (selectedSheetIds.includes(sheet.id)) {
-              return { ...sheet, y: sheet.y + dy };
+              if (material.type === 'siding') {
+                  const newWidth = Math.max(10, sheet.width + dy);
+                  return { ...sheet, width: newWidth, label: newWidth, fullLength: newWidth };
+              } else {
+                  const newLength = Math.max(10, sheet.length + dy);
+                  return { ...sheet, length: newLength, label: newLength, fullLength: newLength };
+              }
           }
           return sheet;
       }));
-  }, [selectedSheetIds]);
+  }, [selectedSheetIds, material.type]);
 
   const updateEdgeLength = (newLength: number, lockedPoint: 'p1' | 'p2') => {
     if (selectedEdge === null) return;
@@ -1295,7 +1301,22 @@ export default function App() {
 
                   setSheets(prev => prev.map(sheet => {
                       if (selectedSheetIds.includes(sheet.id)) {
-                          return { ...sheet, x: sheet.x + dx, y: sheet.y + dy };
+                          let newSheet = { ...sheet };
+                          if (dx !== 0) {
+                              newSheet.x += dx;
+                          }
+                          if (dy !== 0) {
+                              if (material.type === 'siding') {
+                                  newSheet.width = Math.max(10, newSheet.width + dy);
+                                  newSheet.label = newSheet.width;
+                                  newSheet.fullLength = newSheet.width;
+                              } else {
+                                  newSheet.length = Math.max(10, newSheet.length + dy);
+                                  newSheet.label = newSheet.length;
+                                  newSheet.fullLength = newSheet.length;
+                              }
+                          }
+                          return newSheet;
                       }
                       return sheet;
                   }));
@@ -1305,7 +1326,7 @@ export default function App() {
 
       window.addEventListener('keydown', handleKeyDown);
       return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [step, selectedSheetIds, setSheets]);
+  }, [step, selectedSheetIds, setSheets, material.type]);
 
   const rotateShape = (direction: 'cw' | 'ccw') => {
       const allPoints = [...vertices, ...holes.flat()];
@@ -2552,12 +2573,12 @@ export default function App() {
                      })()}
                   </div>
                   
-                  {/* Кнопки переміщення вибраних листів (ТІЛЬКИ ВВЕРХ І ВНИЗ) */}
+                  {/* Кнопки зміни розміру вибраних листів (ТІЛЬКИ ВГОРУ І ВНИЗ) */}
                   <div className="flex flex-col gap-1 mx-1 justify-center border-l border-r border-gray-200 px-2">
-                      <button onClick={() => moveSelectedSheets(10)} className="p-1 bg-blue-50 text-blue-600 rounded border border-blue-100 hover:bg-blue-100 active:bg-blue-200 transition" title="Вгору (1 см)">
+                      <button onClick={() => resizeSelectedSheets(10)} className="p-1 bg-blue-50 text-blue-600 rounded border border-blue-100 hover:bg-blue-100 active:bg-blue-200 transition" title="Збільшити висоту (1 см)">
                           <ArrowUp size={14}/>
                       </button>
-                      <button onClick={() => moveSelectedSheets(-10)} className="p-1 bg-blue-50 text-blue-600 rounded border border-blue-100 hover:bg-blue-100 active:bg-blue-200 transition" title="Вниз (1 см)">
+                      <button onClick={() => resizeSelectedSheets(-10)} className="p-1 bg-blue-50 text-blue-600 rounded border border-blue-100 hover:bg-blue-100 active:bg-blue-200 transition" title="Зменшити висоту (-1 см)">
                           <ArrowDown size={14}/>
                       </button>
                   </div>
