@@ -578,14 +578,14 @@ export default function App() {
         <style>
           body { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; padding: 20px; background: #F1F5F9; margin: 0; color: #1f2937; }
           
-          #pdf-content { width: 800px !important; max-width: 800px !important; margin: 0 auto; background: #fff; padding: 40px; box-sizing: border-box; box-shadow: 0 4px 10px rgba(0,0,0,0.1); border-radius: 8px; }
+          #pdf-content { width: 100% !important; max-width: 800px !important; margin: 0 auto; background: #fff; padding: 20px; box-sizing: border-box; }
           
           .header { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 3px solid #1E3A8A; padding-bottom: 20px; margin-bottom: 30px; }
           h1 { margin: 0; color: #111827; font-size: 28px; }
           .sub-title { color: #6B7280; margin: 5px 0 0 0; font-size: 16px; }
           .meta-box { text-align: right; font-size: 15px; color: #4B5563; }
           
-          .page-break { page-break-inside: avoid; }
+          .page-break { page-break-inside: avoid; margin-bottom: 30px; }
           
           @media print {
             body { background: #fff; padding: 0; margin: 0; }
@@ -626,10 +626,18 @@ export default function App() {
             var element = document.getElementById('pdf-content');
             
             var opt = {
-                margin: 10,
+                margin: [15, 10, 15, 10],
                 filename: 'RoofMaster_Spec.pdf',
                 image: { type: 'jpeg', quality: 0.98 },
-                html2canvas: { scale: 2, useCORS: true, logging: false, windowWidth: 800, width: 800 },
+                pagebreak: { mode: ['css', 'legacy'], avoid: '.page-break' },
+                html2canvas: { 
+                    scale: 2, 
+                    useCORS: true, 
+                    logging: false, 
+                    scrollY: 0, 
+                    scrollX: 0,
+                    windowWidth: document.documentElement.scrollWidth
+                },
                 jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
             };
             
@@ -645,7 +653,7 @@ export default function App() {
         }
         </script>
 
-        <div style="width: 100%; overflow-x: auto;">
+        <div style="width: 100%; overflow: visible;">
           <div id="pdf-content">
               <div class="header">
                 <div>
