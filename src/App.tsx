@@ -592,12 +592,12 @@ export default function App() {
         }
         
         return `
-        <div class="page-break" style="margin-bottom: 50px;">
-            <div class="section-title" style="font-size: 20px; font-weight: bold; margin-bottom: 20px; color: #1F2937; border-bottom: 2px solid #2563EB; padding-bottom: 8px;">
+        <div class="slope-section ${idx > 0 ? 'page-break-before' : ''}" style="margin-bottom: 50px;">
+            <div class="section-title avoid-break" style="font-size: 20px; font-weight: bold; margin-bottom: 20px; color: #1F2937; border-bottom: 2px solid #2563EB; padding-bottom: 8px;">
                 Схил: ${s.name}
             </div>
             
-            <ul style="list-style: none; padding: 0; margin: 0 0 20px 0; font-size: 16px; background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; padding: 15px;">
+            <ul class="avoid-break" style="list-style: none; padding: 0; margin: 0 0 20px 0; font-size: 16px; background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; padding: 15px;">
                 <li style="padding: 6px 0; border-bottom: 1px dashed #CBD5E1; display: flex; justify-content: space-between;">
                     <span style="color: #475569;">Габарити схилу (Ш×В):</span>
                     <strong>${(shapeW / 1000).toFixed(2)} × ${(shapeH / 1000).toFixed(2)} м</strong>
@@ -630,17 +630,17 @@ export default function App() {
                 </li>
             </ul>
 
-            <div class="svg-container" style="border: 2px dashed #CBD5E1; border-radius: 8px; padding: 15px; background: white; margin-bottom: 25px; text-align: center; box-sizing: border-box; overflow: hidden;">
+            <div class="svg-container avoid-break" style="border: 2px dashed #CBD5E1; border-radius: 8px; padding: 15px; background: white; margin-bottom: 25px; text-align: center; box-sizing: border-box; overflow: hidden;">
                 ${svg}
             </div>
             
             <div class="vertical-sheets">
-                <div style="font-size: 18px; font-weight: bold; margin-bottom: 15px; border-left: 4px solid #2563EB; padding-left: 10px; color: #1E293B;">
+                <div class="avoid-break" style="font-size: 18px; font-weight: bold; margin-bottom: 15px; border-left: 4px solid #2563EB; padding-left: 10px; color: #1E293B;">
                     Специфікація листів (Розміри):
                 </div>
                 ${groups.length === 0 ? '<p style="color:#64748B;">Немає листів</p>' : ''}
                 ${groups.map(([len, count], i) => `
-                    <div style="display: flex; background: #F1F5F9; margin-bottom: 8px; padding: 12px 15px; border: 1px solid #E2E8F0; border-radius: 6px; align-items: center;">
+                    <div class="avoid-break" style="display: flex; background: #F1F5F9; margin-bottom: 8px; padding: 12px 15px; border: 1px solid #E2E8F0; border-radius: 6px; align-items: center;">
                         <div style="width: 45px; font-weight: bold; color: #64748B; font-size: 14px;"># ${i + 1}</div>
                         <div style="flex: 1; font-size: 16px; color: #334155;">
                             Розмір: <strong style="font-size: 18px; color: #0F172A;">${isPicket ? Math.round(Number(len)/10) + ' см' : len + ' мм'}</strong>
@@ -671,7 +671,8 @@ export default function App() {
           .sub-title { color: #6B7280; margin: 5px 0 0 0; font-size: 16px; }
           .meta-box { text-align: right; font-size: 15px; color: #4B5563; }
           
-          .page-break { page-break-inside: avoid; margin-bottom: 30px; }
+          .page-break-before { page-break-before: always; break-before: page; }
+          .avoid-break { page-break-inside: avoid; break-inside: avoid; }
           
           @media print {
             body { background: #fff; padding: 0; margin: 0; }
@@ -715,7 +716,7 @@ export default function App() {
                 margin: [15, 10, 15, 10],
                 filename: 'RoofMaster_Spec.pdf',
                 image: { type: 'jpeg', quality: 0.98 },
-                pagebreak: { mode: ['css', 'legacy'], avoid: '.page-break' },
+                pagebreak: { mode: ['css', 'legacy'] },
                 html2canvas: { 
                     scale: 2, 
                     useCORS: true, 
@@ -741,7 +742,7 @@ export default function App() {
 
         <div style="width: 100%; overflow: visible;">
           <div id="pdf-content">
-              <div class="header">
+              <div class="header avoid-break">
                 <div>
                   <h1>Детальна Специфікація</h1>
                   <p class="sub-title">Згенеровано Roof Master Pro</p>
