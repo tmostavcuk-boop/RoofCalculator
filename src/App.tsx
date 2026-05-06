@@ -79,9 +79,15 @@ const ROOF_TEMPLATES = [
 
 // --- Components ---
 const GridBackground = React.memo(() => (
-  <pattern id="grid" width="1000" height="1000" patternUnits="userSpaceOnUse" x="0" y="0">
-    <path d="M 1000 0 L 0 0 0 1000" fill="none" stroke="#94A3B8" strokeWidth="1" strokeOpacity="0.3"/>
-  </pattern>
+  <>
+    <pattern id="smallGrid" width="100" height="100" patternUnits="userSpaceOnUse" x="0" y="0">
+      <path d="M 100 0 L 0 0 0 100" fill="none" stroke="#94A3B8" strokeWidth="1" strokeOpacity="0.3"/>
+    </pattern>
+    <pattern id="grid" width="1000" height="1000" patternUnits="userSpaceOnUse" x="0" y="0">
+      <rect width="1000" height="1000" fill="url(#smallGrid)"/>
+      <path d="M 1000 0 L 0 0 0 1000" fill="none" stroke="#64748B" strokeWidth="3" strokeOpacity="0.5"/>
+    </pattern>
+  </>
 ));
 
 // --- Gemini API Helper ---
@@ -327,7 +333,33 @@ export default function App() {
       return activeEffectiveWidth - material.totalWidth;
   }, [material, autoGapMode, vertices, picketDensity]);
 
-  const wastePercentage = polygonArea > 0 ? ((sheetsArea - polygonArea) / sheetsArea * 100) : 0;
+  const getSlopeOverlapArea = useCallback((slopeSheets: Sheet[]) => {
+      if (material.type === 'picket') return 0;
+      let overlapArea = 0;
+      slopeSheets.forEach(sh => {
+          if (material.type === 'siding') {
+              const overlapW = Math.max(0, material.totalWidth - material.effectiveWidth);
+              overlapArea += (sh.width * overlapW) / 1000000;
+          } else {
+              const parts = sh.id.split('-');
+              const colId = parts[1];
+              const rowId = parseInt(parts[2], 10);
+              const hasSheetAbove = slopeSheets.some(other => {
+                  const oParts = other.id.split('-');
+                  return oParts[1] === colId && parseInt(oParts[2], 10) === rowId + 1;
+              });
+              const overlapY = hasSheetAbove ? (material.overlap || 0) : 0;
+              const effW = Math.min(sh.width, material.effectiveWidth);
+              const effL = Math.max(0, sh.length - overlapY);
+              overlapArea += ((sh.width * sh.length) - (effW * effL)) / 1000000;
+          }
+      });
+      return overlapArea;
+  }, [material.type, material.totalWidth, material.effectiveWidth, material.overlap]);
+
+  const activeOverlapArea = useMemo(() => getSlopeOverlapArea(sheets), [sheets, getSlopeOverlapArea]);
+  const activeUsefulArea = polygonArea + activeOverlapArea;
+  const wastePercentage = sheetsArea > 0 ? (Math.max(0, sheetsArea - activeUsefulArea) / sheetsArea * 100) : 0;
 
   // Global Stats
   const totalProjectStats = useMemo(() => {
@@ -335,6 +367,7 @@ export default function App() {
       let totalSheetsArea = 0;
       let totalSheetsLinear = 0;
       let totalSheetsCount = 0;
+      let totalOverlapArea = 0;
       
       slopes.forEach(s => {
           const outer = getPolyArea(s.vertices);
@@ -344,12 +377,15 @@ export default function App() {
           totalSheetsArea += s.sheets.reduce((acc, sh) => acc + (sh.width * sh.length / 1000000), 0);
           totalSheetsLinear += s.sheets.reduce((acc, sh) => acc + (sh.length / 1000), 0);
           totalSheetsCount += s.sheets.length;
+          totalOverlapArea += getSlopeOverlapArea(s.sheets);
       });
       
-      const totalWaste = totalArea > 0 ? ((totalSheetsArea - totalArea) / totalSheetsArea * 100) : 0;
+      const totalUsefulArea = totalArea + totalOverlapArea;
+      const totalWasteArea = Math.max(0, totalSheetsArea - totalUsefulArea);
+      const totalWaste = totalSheetsArea > 0 ? (totalWasteArea / totalSheetsArea * 100) : 0;
       
-      return { totalArea, totalSheetsArea, totalSheetsLinear, totalWaste, totalSheetsCount };
-  }, [slopes]);
+      return { totalArea, totalSheetsArea, totalSheetsLinear, totalWaste, totalSheetsCount, totalUsefulArea };
+  }, [slopes, getSlopeOverlapArea]);
 
   const getSheetGroups = (sheetList: Sheet[]) => {
     const groups: Record<number, number> = {};
@@ -399,8 +435,9 @@ export default function App() {
         if (width === 0) width = 1000;
         if (height === 0) height = 1000;
 
-        const pX = Math.max(width * 0.15, 250); 
-        const pY = Math.max(height * 0.15, 250);
+        // Збільшуємо відступи для ліній розмірів
+        const pX = Math.max(width * 0.20, 350); 
+        const pY = Math.max(height * 0.20, 350);
         
         const vbWidth = width + pX * 2;
         const vbHeight = height + pY * 2;
@@ -414,6 +451,54 @@ export default function App() {
             renderW = 680;
             renderH = renderW / aspect;
         }
+
+        // Обчислюємо габарити самої фігури (без листів) для відображення розмірів
+        let sMinX = Infinity, sMaxX = -Infinity, sMinY = Infinity, sMaxY = -Infinity;
+        slope.vertices.map(toSvg).forEach(p => {
+             if (p.x < sMinX) sMinX = p.x;
+             if (p.x > sMaxX) sMaxX = p.x;
+             if (p.y < sMinY) sMinY = p.y;
+             if (p.y > sMaxY) sMaxY = p.y;
+        });
+        const shapeW = sMaxX - sMinX;
+        const shapeH = sMaxY - sMinY;
+
+        const dimOffsetX = pX * 0.6;
+        const dimOffsetY = pY * 0.6;
+
+        const defs = `
+            <defs>
+                <pattern id="smallGrid_pdf_${slope.id}" width="100" height="100" patternUnits="userSpaceOnUse" x="0" y="0">
+                    <path d="M 100 0 L 0 0 0 100" fill="none" stroke="#CBD5E1" stroke-width="2" stroke-opacity="0.3"/>
+                </pattern>
+                <pattern id="grid_pdf_${slope.id}" width="1000" height="1000" patternUnits="userSpaceOnUse" x="0" y="0">
+                    <rect width="1000" height="1000" fill="url(#smallGrid_pdf_${slope.id})"/>
+                    <path d="M 1000 0 L 0 0 0 1000" fill="none" stroke="#94A3B8" stroke-width="6" stroke-opacity="0.5"/>
+                </pattern>
+            </defs>
+        `;
+
+        const gridRect = `<rect x="${minX - pX}" y="${minY - pY}" width="${vbWidth}" height="${vbHeight}" fill="url(#grid_pdf_${slope.id})" />`;
+
+        const dimSvg = `
+            <g stroke="#334155" fill="#334155" font-family="sans-serif">
+                <!-- X-axis (Width) -->
+                <line x1="${sMinX}" y1="${sMaxY + dimOffsetY}" x2="${sMaxX}" y2="${sMaxY + dimOffsetY}" stroke-width="6" />
+                <line x1="${sMinX}" y1="${sMaxY + dimOffsetY - 40}" x2="${sMinX}" y2="${sMaxY + dimOffsetY + 40}" stroke-width="6" />
+                <line x1="${sMaxX}" y1="${sMaxY + dimOffsetY - 40}" x2="${sMaxX}" y2="${sMaxY + dimOffsetY + 40}" stroke-width="6" />
+                <line x1="${sMinX}" y1="${sMaxY}" x2="${sMinX}" y2="${sMaxY + dimOffsetY - 10}" stroke-width="3" stroke-dasharray="15,15" opacity="0.6" />
+                <line x1="${sMaxX}" y1="${sMaxY}" x2="${sMaxX}" y2="${sMaxY + dimOffsetY - 10}" stroke-width="3" stroke-dasharray="15,15" opacity="0.6" />
+                <text x="${sMinX + shapeW / 2}" y="${sMaxY + dimOffsetY + 140}" text-anchor="middle" font-size="140" font-weight="bold">${(shapeW/1000).toFixed(2)} м</text>
+
+                <!-- Y-axis (Height) -->
+                <line x1="${sMinX - dimOffsetX}" y1="${sMinY}" x2="${sMinX - dimOffsetX}" y2="${sMaxY}" stroke-width="6" />
+                <line x1="${sMinX - dimOffsetX - 40}" y1="${sMinY}" x2="${sMinX - dimOffsetX + 40}" y2="${sMinY}" stroke-width="6" />
+                <line x1="${sMinX - dimOffsetX - 40}" y1="${sMaxY}" x2="${sMinX - dimOffsetX + 40}" y2="${sMaxY}" stroke-width="6" />
+                <line x1="${sMinX}" y1="${sMinY}" x2="${sMinX - dimOffsetX + 10}" y2="${sMinY}" stroke-width="3" stroke-dasharray="15,15" opacity="0.6" />
+                <line x1="${sMinX}" y1="${sMaxY}" x2="${sMinX - dimOffsetX + 10}" y2="${sMaxY}" stroke-width="3" stroke-dasharray="15,15" opacity="0.6" />
+                <text x="${sMinX - dimOffsetX - 80}" y="${sMinY + shapeH / 2}" text-anchor="middle" dominant-baseline="central" transform="rotate(-90, ${sMinX - dimOffsetX - 80}, ${sMinY + shapeH / 2})" font-size="140" font-weight="bold">${(shapeH/1000).toFixed(2)} м</text>
+            </g>
+        `;
 
         const bgPath = `M ${slope.vertices.map(toSvg).map(p => `${p.x} ${p.y}`).join(' L ')} Z ${slope.holes.map(h => `M ${h.map(toSvg).map(p => `${p.x} ${p.y}`).join(' L ')} Z`).join(' ')}`;
         
@@ -454,9 +539,12 @@ export default function App() {
         `).join('');
 
         return `<svg viewBox="${viewBox}" width="${renderW}" height="${renderH}" style="max-width: 100%; height: auto; display: block; margin: 0 auto; overflow: visible;" preserveAspectRatio="xMidYMid meet">
-            <path d="${bgPath}" fill="#F1F5F9" stroke="none" fill-rule="evenodd" />
+            ${defs}
+            ${gridRect}
+            <path d="${bgPath}" fill="#F1F5F9" stroke="none" fill-rule="evenodd" opacity="0.8" />
+            ${dimSvg}
             ${sheetsSvg}
-            <path d="${outlinePath}" fill="none" stroke="#2563EB" stroke-opacity="0.5" stroke-width="8" />
+            <path d="${outlinePath}" fill="none" stroke="#2563EB" stroke-opacity="0.8" stroke-width="8" />
             ${holesSvg}
         </svg>`;
     };
@@ -465,31 +553,25 @@ export default function App() {
         const svg = generateSlopeSvg(s);
         const groups = getSheetGroups(s.sheets);
         
+        let shapeMinX = Infinity, shapeMaxX = -Infinity, shapeMinY = Infinity, shapeMaxY = -Infinity;
+        s.vertices.forEach(p => {
+             if (p.x < shapeMinX) shapeMinX = p.x;
+             if (p.x > shapeMaxX) shapeMaxX = p.x;
+             if (p.y < shapeMinY) shapeMinY = p.y;
+             if (p.y > shapeMaxY) shapeMaxY = p.y;
+        });
+        const shapeW = shapeMaxX - shapeMinX;
+        const shapeH = shapeMaxY - shapeMinY;
+
         const sArea = getPolyArea(s.vertices) - s.holes.reduce((acc, h) => acc + getPolyArea(h), 0);
         const sSheetsArea = s.sheets.reduce((acc, sh) => acc + (sh.width * sh.length / 1000000), 0);
         const sSheetsLinear = s.sheets.reduce((acc, sh) => acc + (sh.length / 1000), 0);
         
-        const sUsefulArea = s.sheets.reduce((acc, sh) => {
-            if (material.type === 'siding') {
-                return acc + (sh.width * material.effectiveWidth) / 1000000;
-            } else if (material.type === 'picket') {
-                return acc + (sh.length) / 1000; // Погонні метри для штахетника
-            } else {
-                const parts = sh.id.split('-');
-                const colId = parts[1];
-                const rowId = parseInt(parts[2], 10);
-                
-                const hasSheetAbove = s.sheets.some(other => {
-                    const oParts = other.id.split('-');
-                    return oParts[1] === colId && parseInt(oParts[2], 10) === rowId + 1;
-                });
-                
-                const effectiveLen = hasSheetAbove ? (sh.length - (material.overlap || 0)) : sh.length;
-                return acc + (material.effectiveWidth * effectiveLen) / 1000000;
-            }
-        }, 0);
-
-        const sWaste = sSheetsArea > 0 ? ((sSheetsArea - sArea) / sSheetsArea * 100) : 0;
+        const sOverlapArea = getSlopeOverlapArea(s.sheets);
+        const sUsefulArea = isPicket ? sSheetsLinear : (sArea + sOverlapArea);
+        const sWasteArea = Math.max(0, sSheetsArea - sUsefulArea);
+        const sWaste = sSheetsArea > 0 ? (sWasteArea / sSheetsArea * 100) : 0;
+        
         const sCount = s.sheets.length;
         
         let currentGap = material.gap || 0;
@@ -516,6 +598,10 @@ export default function App() {
             </div>
             
             <ul style="list-style: none; padding: 0; margin: 0 0 20px 0; font-size: 16px; background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; padding: 15px;">
+                <li style="padding: 6px 0; border-bottom: 1px dashed #CBD5E1; display: flex; justify-content: space-between;">
+                    <span style="color: #475569;">Габарити схилу (Ш×В):</span>
+                    <strong>${(shapeW / 1000).toFixed(2)} × ${(shapeH / 1000).toFixed(2)} м</strong>
+                </li>
                 <li style="padding: 6px 0; border-bottom: 1px dashed #CBD5E1; display: flex; justify-content: space-between;">
                     <span style="color: #475569;">Площа схилу:</span>
                     <strong>${sArea.toFixed(2)} м²</strong>
@@ -2151,11 +2237,25 @@ export default function App() {
                  </clipPath>
              </defs>
              <g ref={canvasRef} style={{ transformOrigin: '0 0', willChange: 'transform' }}>
-                 <rect x="-10000" y="-10000" width="20000" height="20000" fill="url(#grid)" />
+                 <rect x="-40000" y="-40000" width="80000" height="80000" fill="url(#grid)" />
                  
+                 {/* --- COORDINATE LABELS (1m steps) --- */}
+                 <g opacity="0.6">
+                    {Array.from({length: 81}).map((_, i) => {
+                        const x = (i - 40) * 1000;
+                        if (x === 0) return null;
+                        return <text key={`x-${i}`} x={x} y="150" fontSize="120" fill="#EF4444" textAnchor="middle" fontWeight="bold">{x/1000}м</text>
+                    })}
+                    {Array.from({length: 81}).map((_, i) => {
+                        const y = (i - 40) * 1000;
+                        if (y === 0) return null;
+                        return <text key={`y-${i}`} x="-150" y={y} fontSize="120" fill="#10B981" textAnchor="end" dominantBaseline="central" fontWeight="bold">{-y/1000}м</text>
+                    })}
+                 </g>
+
                  {/* --- AXES (Visual Guides) --- */}
-                 <line x1="-10000" y1="0" x2="10000" y2="0" stroke="#EF4444" strokeWidth="3" strokeOpacity="0.5" /> 
-                 <line x1="0" y1="-10000" x2="0" y2="10000" stroke="#10B981" strokeWidth="3" strokeOpacity="0.5" /> 
+                 <line x1="-40000" y1="0" x2="40000" y2="0" stroke="#EF4444" strokeWidth="4" strokeOpacity="0.6" /> 
+                 <line x1="0" y1="-40000" x2="0" y2="40000" stroke="#10B981" strokeWidth="4" strokeOpacity="0.6" /> 
 
                  {/* --- 1. Background Fill (Bottom Layer) --- */}
                  <path 
