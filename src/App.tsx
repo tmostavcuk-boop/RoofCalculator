@@ -403,6 +403,76 @@ export default function App() {
     const isPicket = material.type === 'picket';
     const isSiding = material.type === 'siding';
     
+    // 1. Calculate Global Sheet Groups (Merging identical sizes)
+    const globalGroups: Record<number, number> = {};
+    slopes.forEach(s => {
+        s.sheets.forEach(sh => {
+            globalGroups[sh.label] = (globalGroups[sh.label] || 0) + 1;
+        });
+    });
+    const globalSheetList = Object.entries(globalGroups).sort((a,b) => Number(b[0]) - Number(a[0]));
+
+    // 2. Slopes Summary Table HTML
+    const slopesSummaryHtml = slopes.map(s => {
+        let shapeMinX = Infinity, shapeMaxX = -Infinity, shapeMinY = Infinity, shapeMaxY = -Infinity;
+        s.vertices.forEach(p => {
+             if (p.x < shapeMinX) shapeMinX = p.x;
+             if (p.x > shapeMaxX) shapeMaxX = p.x;
+             if (p.y < shapeMinY) shapeMinY = p.y;
+             if (p.y > shapeMaxY) shapeMaxY = p.y;
+        });
+        const shapeW = shapeMaxX === -Infinity ? 0 : shapeMaxX - shapeMinX;
+        const shapeH = shapeMaxY === -Infinity ? 0 : shapeMaxY - shapeMinY;
+        const sArea = getPolyArea(s.vertices) - s.holes.reduce((acc, h) => acc + getPolyArea(h), 0);
+
+        return `
+            <tr>
+                <td style="padding: 10px; border-bottom: 1px solid #E2E8F0; font-weight: bold; color: #1E293B;">${s.name}</td>
+                <td style="padding: 10px; border-bottom: 1px solid #E2E8F0; text-align: center; color: #475569;">${(shapeW / 1000).toFixed(2)} × ${(shapeH / 1000).toFixed(2)} м</td>
+                <td style="padding: 10px; border-bottom: 1px solid #E2E8F0; text-align: right; font-weight: bold; color: #0F172A;">${sArea.toFixed(2)} м²</td>
+            </tr>
+        `;
+    }).join('');
+
+    // 3. Global Sheets List HTML
+    const globalGroupsHTML = globalSheetList.length === 0 
+        ? '<p style="color:#64748B;">Немає листів</p>' 
+        : globalSheetList.map(([len, count], i) => `
+        <div class="avoid-break" style="display: flex; background: #F1F5F9; margin-bottom: 8px; padding: 12px 15px; border: 1px solid #E2E8F0; border-radius: 6px; align-items: center;">
+            <div style="width: 45px; font-weight: bold; color: #64748B; font-size: 14px;"># ${i + 1}</div>
+            <div style="flex: 1; font-size: 16px; color: #334155;">
+                Розмір: <strong style="font-size: 18px; color: #0F172A;">${isPicket ? Math.round(Number(len)/10) + ' см' : len + ' мм'}</strong>
+            </div>
+            <div style="width: 140px; text-align: right; font-size: 15px; color: #475569;">
+                Кількість: <strong style="color: #2563EB; font-size: 18px;">${count} шт</strong>
+            </div>
+        </div>
+    `).join('');
+
+    // 4. Global Stats HTML
+    const globalStatsHtml = `
+        <ul class="avoid-break" style="list-style: none; padding: 0; margin: 0 0 30px 0; font-size: 16px; background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; padding: 15px;">
+            <li style="padding: 8px 0; border-bottom: 1px dashed #CBD5E1; display: flex; justify-content: space-between;">
+                <span style="color: #475569;">Площа покрівлі (чиста):</span>
+                <strong style="font-size: 18px;">${totalProjectStats.totalArea.toFixed(2)} м²</strong>
+            </li>
+            <li style="padding: 8px 0; border-bottom: 1px dashed #CBD5E1; display: flex; justify-content: space-between;">
+                <span style="color: #475569;">${isPicket ? 'Загальна кількість м.п.:' : 'Загальна площа листів:'}</span>
+                <strong style="font-size: 18px;">${isPicket ? totalProjectStats.totalSheetsLinear.toFixed(2) + ' м.п.' : totalProjectStats.totalSheetsArea.toFixed(2) + ' м²'}</strong>
+            </li>
+            ${material.type !== 'picket' ? `
+            <li style="padding: 8px 0; border-bottom: 1px dashed #CBD5E1; display: flex; justify-content: space-between;">
+                <span style="color: #475569;">Відходи:</span>
+                <strong style="color: #DC2626; font-size: 18px;">${totalProjectStats.totalWaste.toFixed(2)} %</strong>
+            </li>` : ''}
+            <li style="padding: 8px 0; display: flex; justify-content: space-between;">
+                <span style="color: #475569;">Загальна кількість листів:</span>
+                <strong style="color: #2563EB; font-size: 18px;">${totalProjectStats.totalSheetsCount} шт</strong>
+            </li>
+        </ul>
+    `;
+
+    // 5. SVG Generator for Slopes
     const generateSlopeSvg = (slope: RoofSlope) => {
         let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
 
@@ -435,36 +505,22 @@ export default function App() {
         if (width === 0) width = 1000;
         if (height === 0) height = 1000;
 
-        // Збільшуємо відступи для ліній розмірів
-        const pX = Math.max(width * 0.20, 350); 
-        const pY = Math.max(height * 0.20, 350);
+        // Зменшені відступи, оскільки немає виносних ліній розмірів
+        const pX = Math.max(width * 0.05, 50); 
+        const pY = Math.max(height * 0.05, 50);
         
         const vbWidth = width + pX * 2;
         const vbHeight = height + pY * 2;
         const viewBox = `${minX - pX} ${minY - pY} ${vbWidth} ${vbHeight}`;
         
         const aspect = vbWidth / vbHeight;
-        let renderH = 380; 
+        let renderH = 450; 
         let renderW = renderH * aspect;
 
         if (renderW > 680) {
             renderW = 680;
             renderH = renderW / aspect;
         }
-
-        // Обчислюємо габарити самої фігури (без листів) для відображення розмірів
-        let sMinX = Infinity, sMaxX = -Infinity, sMinY = Infinity, sMaxY = -Infinity;
-        slope.vertices.map(toSvg).forEach(p => {
-             if (p.x < sMinX) sMinX = p.x;
-             if (p.x > sMaxX) sMaxX = p.x;
-             if (p.y < sMinY) sMinY = p.y;
-             if (p.y > sMaxY) sMaxY = p.y;
-        });
-        const shapeW = sMaxX - sMinX;
-        const shapeH = sMaxY - sMinY;
-
-        const dimOffsetX = pX * 0.6;
-        const dimOffsetY = pY * 0.6;
 
         const defs = `
             <defs>
@@ -479,27 +535,6 @@ export default function App() {
         `;
 
         const gridRect = `<rect x="${minX - pX}" y="${minY - pY}" width="${vbWidth}" height="${vbHeight}" fill="url(#grid_pdf_${slope.id})" />`;
-
-        const dimSvg = `
-            <g stroke="#334155" fill="#334155" font-family="sans-serif">
-                <!-- X-axis (Width) -->
-                <line x1="${sMinX}" y1="${sMaxY + dimOffsetY}" x2="${sMaxX}" y2="${sMaxY + dimOffsetY}" stroke-width="6" />
-                <line x1="${sMinX}" y1="${sMaxY + dimOffsetY - 40}" x2="${sMinX}" y2="${sMaxY + dimOffsetY + 40}" stroke-width="6" />
-                <line x1="${sMaxX}" y1="${sMaxY + dimOffsetY - 40}" x2="${sMaxX}" y2="${sMaxY + dimOffsetY + 40}" stroke-width="6" />
-                <line x1="${sMinX}" y1="${sMaxY}" x2="${sMinX}" y2="${sMaxY + dimOffsetY - 10}" stroke-width="3" stroke-dasharray="15,15" opacity="0.6" />
-                <line x1="${sMaxX}" y1="${sMaxY}" x2="${sMaxX}" y2="${sMaxY + dimOffsetY - 10}" stroke-width="3" stroke-dasharray="15,15" opacity="0.6" />
-                <text x="${sMinX + shapeW / 2}" y="${sMaxY + dimOffsetY + 140}" text-anchor="middle" font-size="140" font-weight="bold">${(shapeW/1000).toFixed(2)} м</text>
-
-                <!-- Y-axis (Height) -->
-                <line x1="${sMinX - dimOffsetX}" y1="${sMinY}" x2="${sMinX - dimOffsetX}" y2="${sMaxY}" stroke-width="6" />
-                <line x1="${sMinX - dimOffsetX - 40}" y1="${sMinY}" x2="${sMinX - dimOffsetX + 40}" y2="${sMinY}" stroke-width="6" />
-                <line x1="${sMinX - dimOffsetX - 40}" y1="${sMaxY}" x2="${sMinX - dimOffsetX + 40}" y2="${sMaxY}" stroke-width="6" />
-                <line x1="${sMinX}" y1="${sMinY}" x2="${sMinX - dimOffsetX + 10}" y2="${sMinY}" stroke-width="3" stroke-dasharray="15,15" opacity="0.6" />
-                <line x1="${sMinX}" y1="${sMaxY}" x2="${sMinX - dimOffsetX + 10}" y2="${sMaxY}" stroke-width="3" stroke-dasharray="15,15" opacity="0.6" />
-                <text x="${sMinX - dimOffsetX - 80}" y="${sMinY + shapeH / 2}" text-anchor="middle" dominant-baseline="central" transform="rotate(-90, ${sMinX - dimOffsetX - 80}, ${sMinY + shapeH / 2})" font-size="140" font-weight="bold">${(shapeH/1000).toFixed(2)} м</text>
-            </g>
-        `;
-
         const bgPath = `M ${slope.vertices.map(toSvg).map(p => `${p.x} ${p.y}`).join(' L ')} Z ${slope.holes.map(h => `M ${h.map(toSvg).map(p => `${p.x} ${p.y}`).join(' L ')} Z`).join(' ')}`;
         
         const sheetsSvg = slope.sheets.map(sheet => {
@@ -542,118 +577,28 @@ export default function App() {
             ${defs}
             ${gridRect}
             <path d="${bgPath}" fill="#F1F5F9" stroke="none" fill-rule="evenodd" opacity="0.8" />
-            ${dimSvg}
             ${sheetsSvg}
             <path d="${outlinePath}" fill="none" stroke="#2563EB" stroke-opacity="0.8" stroke-width="8" />
             ${holesSvg}
         </svg>`;
     };
 
-    let slopeSections = slopes.map((s, idx) => {
+    // 6. Slope Sections Generation (Pages 2+)
+    let slopeSections = slopes.map((s) => {
         const svg = generateSlopeSvg(s);
-        const groups = getSheetGroups(s.sheets);
-        
-        let shapeMinX = Infinity, shapeMaxX = -Infinity, shapeMinY = Infinity, shapeMaxY = -Infinity;
-        s.vertices.forEach(p => {
-             if (p.x < shapeMinX) shapeMinX = p.x;
-             if (p.x > shapeMaxX) shapeMaxX = p.x;
-             if (p.y < shapeMinY) shapeMinY = p.y;
-             if (p.y > shapeMaxY) shapeMaxY = p.y;
-        });
-        const shapeW = shapeMaxX - shapeMinX;
-        const shapeH = shapeMaxY - shapeMinY;
-
-        const sArea = getPolyArea(s.vertices) - s.holes.reduce((acc, h) => acc + getPolyArea(h), 0);
-        const sSheetsArea = s.sheets.reduce((acc, sh) => acc + (sh.width * sh.length / 1000000), 0);
-        const sSheetsLinear = s.sheets.reduce((acc, sh) => acc + (sh.length / 1000), 0);
-        
-        const sOverlapArea = getSlopeOverlapArea(s.sheets);
-        const sUsefulArea = isPicket ? sSheetsLinear : (sArea + sOverlapArea);
-        const sWasteArea = Math.max(0, sSheetsArea - sUsefulArea);
-        const sWaste = sSheetsArea > 0 ? (sWasteArea / sSheetsArea * 100) : 0;
-        
-        const sCount = s.sheets.length;
-        
-        let currentGap = material.gap || 0;
-        if (material.type === 'picket' && autoGapMode) {
-            const minX = Math.min(...s.vertices.map(p => p.x));
-            const maxX = Math.max(...s.vertices.map(p => p.x));
-            if (!isNaN(minX) && !isNaN(maxX)) {
-                const slopeWidth = maxX - minX;
-                let count = Math.round((slopeWidth / 1000) * Number(picketDensity));
-                if (count < 2) count = 2;
-                if (slopeWidth > material.totalWidth) {
-                    const activeEffectiveWidth = (slopeWidth - material.totalWidth) / (count - 1);
-                    currentGap = activeEffectiveWidth - material.totalWidth;
-                } else {
-                    currentGap = 0;
-                }
-            }
-        }
         
         return `
-        <div class="slope-section ${idx > 0 ? 'page-break-before' : ''}" style="margin-bottom: 50px;">
-            <div class="section-title avoid-break" style="font-size: 20px; font-weight: bold; margin-bottom: 20px; color: #1F2937; border-bottom: 2px solid #2563EB; padding-bottom: 8px;">
+        <div class="slope-section page-break-before" style="padding-top: 20px;">
+            <div class="section-title avoid-break" style="font-size: 24px; font-weight: bold; margin-bottom: 20px; color: #1F2937; border-bottom: 2px solid #2563EB; padding-bottom: 8px;">
                 Схил: ${s.name}
             </div>
-            
-            <ul class="avoid-break" style="list-style: none; padding: 0; margin: 0 0 20px 0; font-size: 16px; background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; padding: 15px;">
-                <li style="padding: 6px 0; border-bottom: 1px dashed #CBD5E1; display: flex; justify-content: space-between;">
-                    <span style="color: #475569;">Габарити схилу (Ш×В):</span>
-                    <strong>${(shapeW / 1000).toFixed(2)} × ${(shapeH / 1000).toFixed(2)} м</strong>
-                </li>
-                <li style="padding: 6px 0; border-bottom: 1px dashed #CBD5E1; display: flex; justify-content: space-between;">
-                    <span style="color: #475569;">Площа схилу:</span>
-                    <strong>${sArea.toFixed(2)} м²</strong>
-                </li>
-                <li style="padding: 6px 0; border-bottom: 1px dashed #CBD5E1; display: flex; justify-content: space-between;">
-                    <span style="color: #475569;">${isPicket ? 'Погонні метри:' : 'Площа листів:'}</span>
-                    <strong>${isPicket ? sSheetsLinear.toFixed(2) + ' м.п.' : sSheetsArea.toFixed(2) + ' м²'}</strong>
-                </li>
-                <li style="padding: 6px 0; border-bottom: 1px dashed #CBD5E1; display: flex; justify-content: space-between;">
-                    <span style="color: #475569;">${isPicket ? 'Корисні м.п.:' : 'Площа листів корисна:'}</span>
-                    <strong style="color: #16A34A;">${isPicket ? sUsefulArea.toFixed(2) + ' м.п.' : sUsefulArea.toFixed(2) + ' м²'}</strong>
-                </li>
-                ${isPicket ? `
-                <li style="padding: 6px 0; border-bottom: 1px dashed #CBD5E1; display: flex; justify-content: space-between;">
-                    <span style="color: #475569;">Монтажний зазор:</span>
-                    <strong style="color: #D97706;">${Math.max(0, currentGap / 10).toFixed(2)} см</strong>
-                </li>` : ''}
-                ${material.type !== 'picket' ? `
-                <li style="padding: 6px 0; border-bottom: 1px dashed #CBD5E1; display: flex; justify-content: space-between;">
-                    <span style="color: #475569;">Відходи в відсотках:</span>
-                    <strong style="color: #DC2626;">${sWaste.toFixed(2)} %</strong>
-                </li>` : ''}
-                <li style="padding: 6px 0; display: flex; justify-content: space-between;">
-                    <span style="color: #475569;">Кількість листів:</span>
-                    <strong style="color: #2563EB;">${sCount} шт</strong>
-                </li>
-            </ul>
-
-            <div class="svg-container avoid-break" style="border: 2px dashed #CBD5E1; border-radius: 8px; padding: 15px; background: white; margin-bottom: 25px; text-align: center; box-sizing: border-box; overflow: hidden;">
+            <div class="svg-container avoid-break" style="border: 2px dashed #CBD5E1; border-radius: 8px; padding: 15px; background: white; margin-bottom: 25px; text-align: center; box-sizing: border-box; overflow: hidden; min-height: 500px; display: flex; align-items: center; justify-content: center;">
                 ${svg}
-            </div>
-            
-            <div class="vertical-sheets">
-                <div class="avoid-break" style="font-size: 18px; font-weight: bold; margin-bottom: 15px; border-left: 4px solid #2563EB; padding-left: 10px; color: #1E293B;">
-                    Специфікація листів (Розміри):
-                </div>
-                ${groups.length === 0 ? '<p style="color:#64748B;">Немає листів</p>' : ''}
-                ${groups.map(([len, count], i) => `
-                    <div class="avoid-break" style="display: flex; background: #F1F5F9; margin-bottom: 8px; padding: 12px 15px; border: 1px solid #E2E8F0; border-radius: 6px; align-items: center;">
-                        <div style="width: 45px; font-weight: bold; color: #64748B; font-size: 14px;"># ${i + 1}</div>
-                        <div style="flex: 1; font-size: 16px; color: #334155;">
-                            Розмір: <strong style="font-size: 18px; color: #0F172A;">${isPicket ? Math.round(Number(len)/10) + ' см' : len + ' мм'}</strong>
-                        </div>
-                        <div style="width: 140px; text-align: right; font-size: 15px; color: #475569;">
-                            Кількість: <strong style="color: #2563EB; font-size: 18px;">${count} шт</strong>
-                        </div>
-                    </div>
-                `).join('')}
             </div>
         </div>`;
     }).join('');
 
+    // 7. HTML Content Assembly
     const htmlContent = `
       <!DOCTYPE html>
       <html lang="uk">
@@ -742,23 +687,53 @@ export default function App() {
 
         <div style="width: 100%; overflow: visible;">
           <div id="pdf-content">
-              <div class="header avoid-break">
-                <div>
-                  <h1>Детальна Специфікація</h1>
-                  <p class="sub-title">Згенеровано Roof Master Pro</p>
-                </div>
-                <div class="meta-box">
-                  <div><strong>Дата:</strong> ${date}</div>
-                  <div><strong>Матеріал:</strong> ${material.name}</div>
-                  <div style="font-size: 13px; color: #9CA3AF; margin-top:4px;">
-                    ${isPicket
-                        ? `Ширина штахети: ${material.totalWidth} мм${autoGapMode ? ' (Зазор авто)' : ` / Зазор: ${material.gap} мм`}`
-                        : `Габарити: ${material.totalWidth} мм / ${material.effectiveWidth} мм`}
+              
+              <!-- Зведена сторінка (Сторінка 1) -->
+              <div class="summary-page">
+                  <div class="header avoid-break">
+                    <div>
+                      <h1>Детальна Специфікація</h1>
+                      <p class="sub-title">Згенеровано Roof Master</p>
+                    </div>
+                    <div class="meta-box">
+                      <div><strong>Дата:</strong> ${date}</div>
+                      <div><strong>Матеріал:</strong> ${material.name}</div>
+                      <div style="font-size: 13px; color: #9CA3AF; margin-top:4px;">
+                        ${isPicket
+                            ? `Ширина штахети: ${material.totalWidth} мм${autoGapMode ? ' (Зазор авто)' : ` / Зазор: ${material.gap} мм`}`
+                            : `Габарити: ${material.totalWidth} мм / ${material.effectiveWidth} мм`}
+                      </div>
+                    </div>
                   </div>
-                </div>
+
+                  <div class="section-title avoid-break" style="font-size: 20px; font-weight: bold; margin-bottom: 15px; color: #1F2937; border-bottom: 2px solid #2563EB; padding-bottom: 8px;">Загальні показники проекту</div>
+                  ${globalStatsHtml}
+
+                  <div class="section-title avoid-break" style="font-size: 20px; font-weight: bold; margin-bottom: 15px; color: #1F2937; border-bottom: 2px solid #2563EB; padding-bottom: 8px;">Перелік схилів</div>
+                  <table class="avoid-break" style="width: 100%; border-collapse: collapse; margin-bottom: 30px; font-size: 15px; background: white; border: 1px solid #E2E8F0; border-radius: 8px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
+                      <thead>
+                          <tr style="background: #F8FAFC; color: #475569;">
+                              <th style="padding: 12px 15px; border-bottom: 2px solid #CBD5E1; text-align: left;">Назва схилу</th>
+                              <th style="padding: 12px 15px; border-bottom: 2px solid #CBD5E1; text-align: center;">Габарити (Ш×В)</th>
+                              <th style="padding: 12px 15px; border-bottom: 2px solid #CBD5E1; text-align: right;">Площа</th>
+                          </tr>
+                      </thead>
+                      <tbody>
+                          ${slopesSummaryHtml}
+                      </tbody>
+                  </table>
+
+                  <div class="section-title avoid-break" style="font-size: 20px; font-weight: bold; margin-bottom: 15px; color: #1F2937; border-bottom: 2px solid #2563EB; padding-bottom: 8px;">
+                      Специфікація листів (Зведена)
+                  </div>
+                  <div class="vertical-sheets">
+                      ${globalGroupsHTML}
+                  </div>
               </div>
 
+              <!-- Креслення окремих схилів (Наступні сторінки) -->
               ${slopeSections}
+              
           </div>
         </div>
 
@@ -1250,50 +1225,42 @@ export default function App() {
 
         if (material.type === 'picket') {
             if (autoGapMode) {
-                // АВТО ЗА КІЛЬКІСТЮ: жорстко розтягуємо від minX до maxX
                 let count = Math.round((slopeWidth / 1000) * Number(picketDensity));
-                if (count < 2) count = 2; // мінімум 2 штахети (ліва і права)
+                if (count < 2) count = 2;
                 
                 if (slopeWidth <= material.totalWidth) {
                     activeEffectiveWidth = material.totalWidth;
                     actualStartK = 0;
                     actualEndK = 0;
                 } else {
-                    // Точний математичний крок (від лівого краю першої до лівого краю останньої штахети)
                     activeEffectiveWidth = (slopeWidth - material.totalWidth) / (count - 1);
                     actualStartK = 0;
                     actualEndK = count - 1;
                 }
-                gridOriginX = minX; // Жорстка прив'язка до лівого краю (ігноруємо ручні зсуви)
+                gridOriginX = minX;
             } else {
-                // РУЧНИЙ ЗАЗОР
                 let startK = Math.floor((minX - gridOriginX) / activeEffectiveWidth);
                 let endK = Math.floor((maxX - gridOriginX) / activeEffectiveWidth) + 1;
                 
                 actualStartK = startK;
                 while (actualStartK <= endK) {
-                    // Лівий край штахети строго НЕ виходить за minX
                     if (gridOriginX + actualStartK * activeEffectiveWidth >= minX - 0.1) break;
                     actualStartK++;
                 }
                 actualEndK = endK;
                 while (actualEndK >= startK) {
-                    // Лівий край штахети знаходиться в межах скату (дозволяємо правому краю виступати)
                     if (gridOriginX + actualEndK * activeEffectiveWidth <= maxX + 0.1) break;
                     actualEndK--;
                 }
             }
         } else {
-            // ІНШІ МАТЕРІАЛИ
             actualStartK = Math.floor((minX - gridOriginX) / activeEffectiveWidth);
             actualEndK = Math.ceil((maxX - gridOriginX) / activeEffectiveWidth) - 1;
         }
 
-        // --- FIXED CALCULATION FOR ARCH CENTERS ---
         const totalPickets = Math.max(1, actualEndK - actualStartK + 1);
         const realFenceWidth = Math.max(0, (totalPickets - 1) * activeEffectiveWidth); 
         const realStartX = gridOriginX + actualStartK * activeEffectiveWidth;
-        // Додаємо material.totalWidth / 2, щоб центр арки рахувався від центрів штахет, а не їх лівих країв
         const realCenterX = realStartX + realFenceWidth / 2 + material.totalWidth / 2;
 
         for (let i = actualStartK; i <= actualEndK; i++) {
@@ -1335,7 +1302,6 @@ export default function App() {
                         if (material.picketProfile && material.picketProfile !== 'straight') {
                             const dist = Math.abs(stripCenter - realCenterX); 
                             const W = Math.max(1, (totalPickets - 1) * activeEffectiveWidth); 
-                            // Правильно розраховуємо висоту арки (H) як різницю між максимальною і мінімальною висотою
                             const H = Math.max(0, material.maxLength - (material.minLength || material.maxLength));
                             
                             if (H > 0 && W > 0) {
