@@ -412,29 +412,7 @@ export default function App() {
     });
     const globalSheetList = Object.entries(globalGroups).sort((a,b) => Number(b[0]) - Number(a[0]));
 
-    // 2. Slopes Summary Table HTML
-    const slopesSummaryHtml = slopes.map(s => {
-        let shapeMinX = Infinity, shapeMaxX = -Infinity, shapeMinY = Infinity, shapeMaxY = -Infinity;
-        s.vertices.forEach(p => {
-             if (p.x < shapeMinX) shapeMinX = p.x;
-             if (p.x > shapeMaxX) shapeMaxX = p.x;
-             if (p.y < shapeMinY) shapeMinY = p.y;
-             if (p.y > shapeMaxY) shapeMaxY = p.y;
-        });
-        const shapeW = shapeMaxX === -Infinity ? 0 : shapeMaxX - shapeMinX;
-        const shapeH = shapeMaxY === -Infinity ? 0 : shapeMaxY - shapeMinY;
-        const sArea = getPolyArea(s.vertices) - s.holes.reduce((acc, h) => acc + getPolyArea(h), 0);
-
-        return `
-            <tr>
-                <td style="padding: 10px; border-bottom: 1px solid #E2E8F0; font-weight: bold; color: #1E293B;">${s.name}</td>
-                <td style="padding: 10px; border-bottom: 1px solid #E2E8F0; text-align: center; color: #475569;">${(shapeW / 1000).toFixed(2)} × ${(shapeH / 1000).toFixed(2)} м</td>
-                <td style="padding: 10px; border-bottom: 1px solid #E2E8F0; text-align: right; font-weight: bold; color: #0F172A;">${sArea.toFixed(2)} м²</td>
-            </tr>
-        `;
-    }).join('');
-
-    // 3. Global Sheets List HTML
+    // 2. Global Sheets List HTML
     const globalGroupsHTML = globalSheetList.length === 0 
         ? '<p style="color:#64748B;">Немає листів</p>' 
         : globalSheetList.map(([len, count], i) => `
@@ -449,7 +427,7 @@ export default function App() {
         </div>
     `).join('');
 
-    // 4. Global Stats HTML
+    // 3. Global Stats HTML
     const globalStatsHtml = `
         <ul class="avoid-break" style="list-style: none; padding: 0; margin: 0 0 30px 0; font-size: 16px; background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; padding: 15px;">
             <li style="padding: 8px 0; border-bottom: 1px dashed #CBD5E1; display: flex; justify-content: space-between;">
@@ -472,7 +450,7 @@ export default function App() {
         </ul>
     `;
 
-    // 5. SVG Generator for Slopes
+    // 4. SVG Generator for Slopes
     const generateSlopeSvg = (slope: RoofSlope) => {
         let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
 
@@ -505,9 +483,9 @@ export default function App() {
         if (width === 0) width = 1000;
         if (height === 0) height = 1000;
 
-        // Зменшені відступи, оскільки немає виносних ліній розмірів
-        const pX = Math.max(width * 0.05, 50); 
-        const pY = Math.max(height * 0.05, 50);
+        // Збільшені відступи для відображення розмірних ліній (text)
+        const pX = Math.max(width * 0.1, 400); 
+        const pY = Math.max(height * 0.1, 400);
         
         const vbWidth = width + pX * 2;
         const vbHeight = height + pY * 2;
@@ -573,6 +551,29 @@ export default function App() {
              <path d="M ${h.map(toSvg).map(p => `${p.x} ${p.y}`).join(' L ')} Z" fill="rgba(239, 68, 68, 0.1)" stroke="#EF4444" stroke-opacity="0.5" stroke-width="10" stroke-dasharray="15,15" />
         `).join('');
 
+        // Генерація розмірів для кожної лінії (схилу та вирізів)
+        const dimensionsSvg = [slope.vertices, ...slope.holes].map(poly => {
+            return poly.map((p, i) => {
+                const next = poly[(i + 1) % poly.length];
+                const p1 = toSvg(p);
+                const p2 = toSvg(next);
+                const dist = Math.hypot(next.x - p.x, next.y - p.y);
+                if (dist < 10) return '';
+
+                const mx = (p1.x + p2.x) / 2;
+                const my = (p1.y + p2.y) / 2;
+                const fs = 150;
+                const text = (dist / 1000).toFixed(2) + ' м';
+
+                return `
+                    <g transform="translate(${mx}, ${my})">
+                        <rect x="-${fs * 2.5}" y="-${fs * 1.2}" width="${fs * 5}" height="${fs * 2.4}" rx="${fs * 0.5}" fill="white" stroke="#64748B" stroke-width="8" opacity="0.9" />
+                        <text x="0" y="${fs * 0.1}" text-anchor="middle" dominant-baseline="central" font-size="${fs}" font-weight="bold" fill="#0F172A" font-family="sans-serif">${text}</text>
+                    </g>
+                `;
+            }).join('');
+        }).join('');
+
         return `<svg viewBox="${viewBox}" width="${renderW}" height="${renderH}" style="max-width: 100%; height: auto; display: block; margin: 0 auto; overflow: visible;" preserveAspectRatio="xMidYMid meet">
             ${defs}
             ${gridRect}
@@ -580,10 +581,11 @@ export default function App() {
             ${sheetsSvg}
             <path d="${outlinePath}" fill="none" stroke="#2563EB" stroke-opacity="0.8" stroke-width="8" />
             ${holesSvg}
+            ${dimensionsSvg}
         </svg>`;
     };
 
-    // 6. Slope Sections Generation (Pages 2+)
+    // 5. Slope Sections Generation (Pages 2+)
     let slopeSections = slopes.map((s) => {
         const svg = generateSlopeSvg(s);
         
@@ -598,7 +600,7 @@ export default function App() {
         </div>`;
     }).join('');
 
-    // 7. HTML Content Assembly
+    // 6. HTML Content Assembly
     const htmlContent = `
       <!DOCTYPE html>
       <html lang="uk">
@@ -708,20 +710,6 @@ export default function App() {
 
                   <div class="section-title avoid-break" style="font-size: 20px; font-weight: bold; margin-bottom: 15px; color: #1F2937; border-bottom: 2px solid #2563EB; padding-bottom: 8px;">Загальні показники проекту</div>
                   ${globalStatsHtml}
-
-                  <div class="section-title avoid-break" style="font-size: 20px; font-weight: bold; margin-bottom: 15px; color: #1F2937; border-bottom: 2px solid #2563EB; padding-bottom: 8px;">Перелік схилів</div>
-                  <table class="avoid-break" style="width: 100%; border-collapse: collapse; margin-bottom: 30px; font-size: 15px; background: white; border: 1px solid #E2E8F0; border-radius: 8px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
-                      <thead>
-                          <tr style="background: #F8FAFC; color: #475569;">
-                              <th style="padding: 12px 15px; border-bottom: 2px solid #CBD5E1; text-align: left;">Назва схилу</th>
-                              <th style="padding: 12px 15px; border-bottom: 2px solid #CBD5E1; text-align: center;">Габарити (Ш×В)</th>
-                              <th style="padding: 12px 15px; border-bottom: 2px solid #CBD5E1; text-align: right;">Площа</th>
-                          </tr>
-                      </thead>
-                      <tbody>
-                          ${slopesSummaryHtml}
-                      </tbody>
-                  </table>
 
                   <div class="section-title avoid-break" style="font-size: 20px; font-weight: bold; margin-bottom: 15px; color: #1F2937; border-bottom: 2px solid #2563EB; padding-bottom: 8px;">
                       Специфікація листів (Зведена)
